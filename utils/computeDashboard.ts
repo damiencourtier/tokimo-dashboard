@@ -59,18 +59,28 @@ export function computeDashboard(
   transactions: Transaction[],
   updatedAt: string | null
 ): DashboardData {
+  const valid = transactions.filter(t => t.status === 'Validé')
+  const echeances = valid.filter(t => t.nature === "Versement de l'échéance (montant brut)")
+
+  // Capital déjà remboursé par projet (échéances avec part de capital), pour
+  // calculer le capital *restant dû* d'un projet actif plutôt que son montant
+  // initial investi (un projet en mensualités rembourse du capital avant même
+  // d'être soldé — Tokimo affiche déjà ce restant dû dans son "capital en cours").
+  const capitalRepaidByProject = new Map<string, number>()
+  for (const t of echeances) {
+    capitalRepaidByProject.set(t.project, round2((capitalRepaidByProject.get(t.project) || 0) + t.capital))
+  }
+  const remainingCapitalOf = (p: Project) => Math.max(0, round2(p.amount - (capitalRepaidByProject.get(p.name) || 0)))
+
   const totalInvested = round2(sum(projects.map(p => p.amount)))
   const reimbursedCapital = round2(sum(projects.filter(p => p.status === 'Remboursé').map(p => p.amount)))
   const activeProjects = projects.filter(p => p.status !== 'Remboursé')
-  const activeCapital = round2(sum(activeProjects.map(p => p.amount)))
+  const activeCapital = round2(sum(activeProjects.map(remainingCapitalOf)))
   const nbProjectsActive = activeProjects.length
 
   const avgRateWeightedActive = activeCapital
-    ? round2(sum(activeProjects.map(p => p.rate * p.amount)) / activeCapital)
+    ? round2(sum(activeProjects.map(p => p.rate * remainingCapitalOf(p))) / activeCapital)
     : 0
-
-  const valid = transactions.filter(t => t.status === 'Validé')
-  const echeances = valid.filter(t => t.nature === "Versement de l'échéance (montant brut)")
 
   const grossInterestTotal = round2(sum(echeances.map(t => t.interest)))
   const capitalRepaidTotal = round2(sum(echeances.map(t => t.capital)))
@@ -104,7 +114,7 @@ export function computeDashboard(
   const rateBreakdown: Record<string, number> = {}
   for (const p of activeProjects) {
     const key = `${p.rate.toFixed(1)}%`
-    rateBreakdown[key] = round2((rateBreakdown[key] || 0) + p.amount)
+    rateBreakdown[key] = round2((rateBreakdown[key] || 0) + remainingCapitalOf(p))
   }
 
   const monthlyForecastGross = round2((activeCapital * avgRateWeightedActive) / 100 / 12)

@@ -2,8 +2,8 @@
 const portfolio = usePortfolio()
 
 const defaultTaxRate = computed(() => {
-  if (portfolio.value.transactions.length === 0) return 30
-  const dashboard = computeDashboard(portfolio.value.projects, portfolio.value.transactions, null)
+  if (portfolio.data.value.transactions.length === 0) return 30
+  const dashboard = computeDashboard(portfolio.data.value.projects, portfolio.data.value.transactions, null)
   return dashboard.kpis.effectiveTaxRatePct || 30
 })
 

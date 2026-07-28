@@ -1,10 +1,12 @@
 <script setup lang="ts">
 const route = useRoute()
 const portfolio = usePortfolio()
+const api = useApi()
+const { isAdmin } = useAuth()
 
 const projectName = computed(() => decodeURIComponent(route.params.name as string))
-const project = computed(() => portfolio.value.projects.find(p => p.name === projectName.value) || null)
-const detail = computed(() => (project.value ? computeProjectDetail(project.value, portfolio.value.transactions) : null))
+const project = computed(() => portfolio.data.value.projects.find(p => p.name === projectName.value) || null)
+const detail = computed(() => (project.value ? computeProjectDetail(project.value, portfolio.data.value.transactions) : null))
 
 const statusColor: Record<string, 'success' | 'primary' | 'warning' | 'info' | 'neutral'> = {
   'Financé': 'success',
@@ -21,18 +23,108 @@ const paymentTypeItems = [
   { label: "In fine (à l'échéance)", value: 'in_fine' },
   { label: 'Mensuel', value: 'mensuel' }
 ]
+const paymentTypeLabel = computed(
+  () => paymentTypeItems.find(i => i.value === schedulePaymentType.value)?.label ?? '—'
+)
 
 // Une échéance mensuelle "intérêts seuls" (capital = 0) déjà versée suggère un
-// versement mensuel en cours plutôt qu'un remboursement in fine.
-const inferredPaymentType: 'in_fine' | 'mensuel' = detail.value?.transactions.some(
-  t => t.nature === "Versement de l'échéance (montant brut)" && t.capital === 0 && t.interest > 0
+// versement mensuel en cours plutôt qu'un remboursement in fine — utilisé tant
+// que le projet n'a pas de type de versement enregistré explicitement.
+const inferredPaymentType = computed<'in_fine' | 'mensuel'>(() =>
+  detail.value?.transactions.some(
+    t => t.nature === "Versement de l'échéance (montant brut)" && t.capital === 0 && t.interest > 0
+  )
+    ? 'mensuel'
+    : 'in_fine'
 )
-  ? 'mensuel'
-  : 'in_fine'
 
 const remainingMonths = ref(6)
-const schedulePaymentType = ref<'in_fine' | 'mensuel'>(inferredPaymentType)
+const schedulePaymentType = ref<'in_fine' | 'mensuel'>('in_fine')
 const scheduleTaxRate = ref(detail.value?.kpis.grossInterestTotal ? detail.value.kpis.effectiveTaxRatePct : 30)
+const paymentTypeSaving = ref(false)
+const paymentTypeError = ref('')
+
+const durationMonths = ref<number | null>(null)
+const durationSaving = ref(false)
+const durationError = ref('')
+
+const rate = ref(0)
+const rateSaving = ref(false)
+const rateError = ref('')
+
+watch(project, (p) => {
+  if (p) {
+    schedulePaymentType.value = p.paymentType ?? inferredPaymentType.value
+    durationMonths.value = p.durationMonths
+    rate.value = p.rate
+  }
+}, { immediate: true })
+
+async function onPaymentTypeChange(value: 'in_fine' | 'mensuel') {
+  const previous = schedulePaymentType.value
+  schedulePaymentType.value = value
+  if (!project.value) return
+  paymentTypeSaving.value = true
+  paymentTypeError.value = ''
+  try {
+    await api(`/projects/${encodeURIComponent(project.value.name)}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/merge-patch+json' },
+      body: { paymentType: value }
+    })
+    await portfolio.refresh()
+  } catch (e: any) {
+    schedulePaymentType.value = previous
+    paymentTypeError.value = apiErrorMessage(e, "Échec de l'enregistrement.")
+  } finally {
+    paymentTypeSaving.value = false
+  }
+}
+
+async function onDurationMonthsChange() {
+  if (!project.value) return
+  const value = durationMonths.value
+  if (value !== null && (!Number.isInteger(value) || value <= 0)) {
+    durationError.value = 'Doit être un nombre entier positif.'
+    return
+  }
+  durationSaving.value = true
+  durationError.value = ''
+  try {
+    await api(`/projects/${encodeURIComponent(project.value.name)}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/merge-patch+json' },
+      body: { durationMonths: value }
+    })
+    await portfolio.refresh()
+  } catch (e: any) {
+    durationError.value = apiErrorMessage(e, "Échec de l'enregistrement.")
+  } finally {
+    durationSaving.value = false
+  }
+}
+
+async function onRateChange() {
+  if (!project.value) return
+  if (!Number.isFinite(rate.value) || rate.value <= 0 || rate.value > 100) {
+    rateError.value = 'Doit être un nombre entre 0 et 100.'
+    return
+  }
+  rateSaving.value = true
+  rateError.value = ''
+  try {
+    await api(`/projects/${encodeURIComponent(project.value.name)}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/merge-patch+json' },
+      body: { rate: rate.value }
+    })
+    await portfolio.refresh()
+  } catch (e: any) {
+    rateError.value = apiErrorMessage(e, "Échec de l'enregistrement.")
+  } finally {
+    rateSaving.value = false
+  }
+}
 
 const today = new Date()
 
@@ -62,7 +154,7 @@ const schedule = computed(() => {
         color="warning"
         variant="subtle"
         title="Projet introuvable"
-        description="Ce projet n'est pas dans les données actuellement chargées. Rappel : rien n'est persisté — si tu as rechargé la page, réimporte tes fichiers."
+        description="Ce projet n'existe pas dans les données importées."
       />
     </div>
 
@@ -82,6 +174,67 @@ const schedule = computed(() => {
         <KpiCard label="Capital restant" :value="fmtEur0(detail!.kpis.remainingCapital)" />
         <KpiCard label="Gains nets" :value="fmtEur(detail!.kpis.netInterestTotal)" sub="après IR + CSG" />
       </div>
+
+      <UCard>
+        <template #header>
+          <div class="font-semibold text-sm">Infos complémentaires{{ isAdmin ? ' (admin)' : '' }}</div>
+        </template>
+        <p class="text-xs text-muted mb-3 leading-relaxed">
+          Absentes des exports Tokimo, communes à tous les comptes ayant souscrit à ce projet.
+          <template v-if="isAdmin">
+            Modifiables ici et enregistrées immédiatement ; un réimport du fichier "liste_projets" ne les
+            écrase jamais une fois définies.
+          </template>
+        </p>
+
+        <div v-if="isAdmin" class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <UFormField label="Taux (%)" :error="rateError || undefined">
+            <UInputNumber
+              v-model="rate"
+              :min="0"
+              :max="100"
+              :step="0.1"
+              :disabled="rateSaving"
+              class="w-full sm:w-40"
+              @blur="onRateChange"
+            />
+          </UFormField>
+          <UFormField label="Durée du prêt (mois)" :error="durationError || undefined">
+            <UInputNumber
+              v-model="durationMonths"
+              :min="1"
+              :step="1"
+              :disabled="durationSaving"
+              class="w-full sm:w-40"
+              @blur="onDurationMonthsChange"
+            />
+          </UFormField>
+          <UFormField label="Type de versement" :error="paymentTypeError || undefined">
+            <URadioGroup
+              :model-value="schedulePaymentType"
+              :items="paymentTypeItems"
+              :disabled="paymentTypeSaving"
+              orientation="horizontal"
+              @update:model-value="onPaymentTypeChange"
+            />
+          </UFormField>
+        </div>
+
+        <div v-else class="grid grid-cols-2 sm:grid-cols-3 gap-4">
+          <div>
+            <div class="text-xs text-muted mb-1">Taux</div>
+            <div class="text-sm font-medium">{{ project.rate.toFixed(2) }} %</div>
+          </div>
+          <div>
+            <div class="text-xs text-muted mb-1">Durée du prêt</div>
+            <div class="text-sm font-medium">{{ durationMonths ? `${durationMonths} mois` : 'Non renseignée' }}</div>
+          </div>
+          <div>
+            <div class="text-xs text-muted mb-1">Type de versement</div>
+            <div class="text-sm font-medium">{{ paymentTypeLabel }}</div>
+          </div>
+        </div>
+      </UCard>
 
       <section v-if="detail!.transactions.length">
         <UCard>
@@ -104,19 +257,17 @@ const schedule = computed(() => {
           </template>
 
           <p class="text-xs text-muted mb-4 leading-relaxed">
-            Tokimo n'exporte pas la durée restante ni le type de versement dans les CSV : ajuste ces champs
-            pour qu'ils correspondent à ton projet. Calculé sur le capital restant dû ({{ fmtEur0(detail!.kpis.remainingCapital) }}).
+            Tokimo n'exporte pas la durée restante dans les CSV : ajuste ce champ pour qu'il corresponde à
+            ton projet (type de versement réglable plus haut). Calculé sur le capital restant dû
+            ({{ fmtEur0(detail!.kpis.remainingCapital) }}).
           </p>
 
-          <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
             <UFormField label="Mois restants">
               <UInputNumber v-model="remainingMonths" :min="1" :step="1" class="w-full" />
             </UFormField>
             <UFormField label="Taux de prélèvement (%)">
               <UInputNumber v-model="scheduleTaxRate" :min="0" :max="100" :step="0.5" class="w-full" />
-            </UFormField>
-            <UFormField label="Type de versement">
-              <URadioGroup v-model="schedulePaymentType" :items="paymentTypeItems" orientation="horizontal" />
             </UFormField>
           </div>
 

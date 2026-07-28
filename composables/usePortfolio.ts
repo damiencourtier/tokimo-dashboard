@@ -6,11 +6,16 @@ export interface PortfolioState {
   updatedAt: string | null
 }
 
-/** In-memory only: resets on every full page reload, nothing is persisted. */
+/**
+ * Portfolio de l'utilisateur courant, récupéré depuis l'API Symfony externe
+ * (/portfolio). Partagé entre les pages via la clé 'portfolio' (Nuxt
+ * dédoublonne le fetch). Appeler `refresh()` après un import ou une édition.
+ */
 export function usePortfolio() {
-  return useState<PortfolioState>('portfolio', () => ({
-    projects: [],
-    transactions: [],
-    updatedAt: null
-  }))
+  const api = useApi()
+  return useAsyncData<PortfolioState>(
+    'portfolio',
+    () => api('/portfolio'),
+    { default: () => ({ projects: [], transactions: [], updatedAt: null }) }
+  )
 }

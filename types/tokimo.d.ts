@@ -1,10 +1,17 @@
-export interface Project {
+/** Champs tels qu'exportés par le CSV Tokimo "liste_projets". */
+export interface ProjectCsvRow {
   name: string
   date_emission: string // dd/mm/yyyy
   step: string
   rate: number
   amount: number
   status: string
+}
+
+export interface Project extends ProjectCsvRow {
+  /** Champs éditables manuellement, jamais fournis par Tokimo. */
+  paymentType: 'in_fine' | 'mensuel' | null
+  durationMonths: number | null
 }
 
 export interface Transaction {

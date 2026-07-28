@@ -2,8 +2,8 @@
 const portfolio = usePortfolio()
 
 const data = computed(() => {
-  if (portfolio.value.projects.length === 0) return null
-  return computeDashboard(portfolio.value.projects, portfolio.value.transactions, portfolio.value.updatedAt)
+  if (portfolio.data.value.projects.length === 0) return null
+  return computeDashboard(portfolio.data.value.projects, portfolio.data.value.transactions, portfolio.data.value.updatedAt)
 })
 
 const fmtEur = (n: number) =>

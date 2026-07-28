@@ -1,7 +1,6 @@
 <script setup lang="ts">
-import type { Project, Transaction } from '../types/tokimo'
-
 const portfolio = usePortfolio()
+const api = useApi()
 
 const projectsFile = ref<File | null>(null)
 const transactionsFile = ref<File | null>(null)
@@ -18,17 +17,16 @@ async function uploadProjects() {
   try {
     const form = new FormData()
     form.append('file', projectsFile.value)
-    const res = await $fetch<{ ok: boolean; count: number; projects: Project[] }>('/api/upload/projects', {
+    const res = await api<{ ok: boolean; count: number }>('/upload/projects', {
       method: 'POST',
       body: form
     })
-    portfolio.value.projects = res.projects
-    portfolio.value.updatedAt = new Date().toISOString()
+    await portfolio.refresh()
     projectsStatus.value = 'ok'
     projectsMessage.value = `${res.count} lignes importées avec succès.`
   } catch (e: any) {
     projectsStatus.value = 'error'
-    projectsMessage.value = e?.data?.statusMessage || e?.message || "Échec de l'import."
+    projectsMessage.value = apiErrorMessage(e, "Échec de l'import.")
   }
 }
 
@@ -39,17 +37,16 @@ async function uploadTransactions() {
   try {
     const form = new FormData()
     form.append('file', transactionsFile.value)
-    const res = await $fetch<{ ok: boolean; count: number; transactions: Transaction[] }>('/api/upload/transactions', {
+    const res = await api<{ ok: boolean; count: number }>('/upload/transactions', {
       method: 'POST',
       body: form
     })
-    portfolio.value.transactions = res.transactions
-    portfolio.value.updatedAt = new Date().toISOString()
+    await portfolio.refresh()
     transactionsStatus.value = 'ok'
     transactionsMessage.value = `${res.count} lignes importées avec succès.`
   } catch (e: any) {
     transactionsStatus.value = 'error'
-    transactionsMessage.value = e?.data?.statusMessage || e?.message || "Échec de l'import."
+    transactionsMessage.value = apiErrorMessage(e, "Échec de l'import.")
   }
 }
 
@@ -69,9 +66,10 @@ function onTransactionsChange(e: Event) {
       <h2 class="text-lg font-bold">Mettre à jour les données</h2>
       <p class="text-sm text-muted mt-1">
         Sur Tokimo, va dans <b>Tableau de bord → Vos souscriptions → Exporter les projets</b>, puis dans
-        <b>Mon compte → Mes transactions → Exporter les transactions</b>. Dépose les deux fichiers ici : le
-        dashboard se met à jour immédiatement. Rien n'est enregistré côté serveur — un rechargement de la
-        page efface les données, il faudra réimporter les fichiers.
+        <b>Mon compte → Mes transactions → Exporter les transactions</b>. Dépose les deux fichiers ici : les
+        données sont enregistrées en base et mettent à jour ton dashboard. Réimporter les mêmes fichiers plus
+        tard met simplement à jour les lignes existantes (aucun doublon), sans jamais écraser le type de
+        versement que tu as choisi sur un projet.
       </p>
     </div>
 
@@ -103,7 +101,8 @@ function onTransactionsChange(e: Event) {
       </template>
       <p class="text-xs text-muted mb-3">
         Fichier <code>liste_transactions_du_*.csv</code> — l'historique complet (dépôts, échéances, IR/CSG).
-        C'est celui qui alimente le cash-flow précis et les prévisions nettes.
+        C'est celui qui alimente le cash-flow précis et les prévisions nettes. Importe-le après le fichier
+        des projets (les transactions sont rattachées aux projets déjà en base).
       </p>
       <input type="file" accept=".csv" class="text-sm mb-3" @change="onTransactionsChange" />
       <div class="flex items-center gap-3">
