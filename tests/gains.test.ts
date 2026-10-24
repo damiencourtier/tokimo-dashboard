@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { computeDashboard, computeProjectDetail, computeTaxByYear, grossInterestOf } from '../utils/computeDashboard'
+import { computeDashboard, computeProjectDetail, computeTaxByYear, grossInterestOf, subscriptionDatesByProject } from '../utils/computeDashboard'
 import { statusColor, statusLabel } from '../utils/status'
 import type { Project, Transaction } from '../types/tokimo'
 
@@ -85,5 +85,21 @@ describe('récapitulatif fiscal', () => {
       { year: '2026', nbEcheances: 2, grossInterest: 2.21, ir: 0.28, csg: 0.4, netInterest: 1.53 },
       { year: '2025', nbEcheances: 1, grossInterest: 4.63, ir: 0.59, csg: 0.8, netInterest: 3.24 }
     ])
+  })
+})
+
+describe('dates de souscription', () => {
+  it('liste les souscriptions validées par projet, de la plus ancienne à la plus récente', () => {
+    const rows = [
+      tx({ date: '02/10/2026', nature: 'Souscription', amount: -200 }),
+      tx({ date: '01/10/2026', nature: 'Souscription', amount: -100 }),
+      tx({ date: '20/09/2026', nature: 'Souscription', project: 'ZONZA CAVU - CORSE', amount: -100 }),
+      tx({ date: '15/09/2026', nature: 'Souscription', project: 'ZONZA CAVU - CORSE', amount: -100, status: 'Annulé' }),
+      ...bonuses
+    ]
+    expect(subscriptionDatesByProject(rows)).toEqual({
+      'VILLA MIREILLE - MANDELIEU': ['01/10/2026', '02/10/2026'],
+      'ZONZA CAVU - CORSE': ['20/09/2026']
+    })
   })
 })

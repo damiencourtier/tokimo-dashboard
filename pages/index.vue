@@ -270,7 +270,7 @@ const updatedAtLabel = computed(() => {
           <template #header>
             <div class="font-semibold text-sm">Détail des {{ data!.kpis.nbProjectsTotal }} souscriptions</div>
           </template>
-          <ProjectsTable :projects="data!.projects" />
+          <ProjectsTable :projects="data!.projects" :subscription-dates="data!.subscriptionDates" />
         </UCard>
       </section>
     </div>

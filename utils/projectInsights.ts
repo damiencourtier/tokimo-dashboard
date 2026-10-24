@@ -39,3 +39,16 @@ export function hasFirstRankMortgage(p: Pick<Project, 'guarantees'>): boolean | 
   if (!p.guarantees) return null
   return p.guarantees.some(g => /hypoth[eè]que/i.test(g) && /1(er|ère)?\s*rang|premier rang/i.test(g))
 }
+
+/** Ordre du cycle de vie d'un projet Tokimo ; une étape inconnue passe après, par ordre alphabétique. */
+const STEP_ORDER = ['Acquisition', 'Valorisation', 'Commercialisation', 'Remboursement']
+
+/** Étapes présentes dans les projets, dans l'ordre du cycle de vie, avec le nombre de projets. */
+export function stepCounts(projects: Pick<Project, 'step'>[]): { step: string; count: number }[] {
+  const counts = new Map<string, number>()
+  for (const p of projects) counts.set(p.step, (counts.get(p.step) ?? 0) + 1)
+  const rank = (s: string) => (STEP_ORDER.includes(s) ? STEP_ORDER.indexOf(s) : STEP_ORDER.length)
+  return [...counts]
+    .sort(([a], [b]) => rank(a) - rank(b) || a.localeCompare(b))
+    .map(([step, count]) => ({ step, count }))
+}

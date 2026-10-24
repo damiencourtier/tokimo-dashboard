@@ -2,10 +2,21 @@
 import { computed, ref } from 'vue'
 import type { Project } from '../types/tokimo'
 
-const props = defineProps<{ projects: Project[] }>()
+const props = withDefaults(defineProps<{
+  projects: Project[]
+  /** Nom du projet -> dates de souscription (dd/mm/yyyy), la plus ancienne en premier. */
+  subscriptionDates?: Record<string, string[]>
+}>(), { subscriptionDates: () => ({}) })
+
+/** Colonne calculée, absente de Project : première date de souscription. */
+type SortKey = keyof Project | 'subscribed_at'
 
 const search = ref('')
-const sortKey = ref<keyof Project>('date_emission')
+const stepFilter = ref<string[]>([])
+const stepItems = computed(() =>
+  stepCounts(props.projects).map(({ step, count }) => ({ label: `${step} (${count})`, value: step }))
+)
+const sortKey = ref<SortKey>('date_emission')
 const sortDir = ref<1 | -1>(-1)
 
 /** Date d'émission pas encore fixée -> triée comme la plus récente (à venir). */
@@ -15,7 +26,9 @@ function parseDate(s: string | null) {
   return new Date(Number(y), Number(m) - 1, Number(d))
 }
 
-function sortBy(key: keyof Project) {
+const subscribedAt = (p: Project) => props.subscriptionDates[p.name]?.[0] ?? null
+
+function sortBy(key: SortKey) {
   if (sortKey.value === key) sortDir.value = (sortDir.value * -1) as 1 | -1
   else {
     sortKey.value = key
@@ -27,14 +40,15 @@ const rows = computed(() => {
   const q = search.value.toLowerCase()
   let filtered = props.projects.filter(
     p =>
-      p.name.toLowerCase().includes(q) ||
-      statusLabel(p.status).toLowerCase().includes(q) ||
-      p.step.toLowerCase().includes(q)
+      (!stepFilter.value.length || stepFilter.value.includes(p.step)) &&
+      (p.name.toLowerCase().includes(q) ||
+        statusLabel(p.status).toLowerCase().includes(q) ||
+        p.step.toLowerCase().includes(q))
   )
   filtered = filtered.slice().sort((a, b) => {
-    let av: any = a[sortKey.value]
-    let bv: any = b[sortKey.value]
-    if (sortKey.value === 'date_emission') {
+    let av: any = sortKey.value === 'subscribed_at' ? subscribedAt(a) : a[sortKey.value]
+    let bv: any = sortKey.value === 'subscribed_at' ? subscribedAt(b) : b[sortKey.value]
+    if (sortKey.value === 'date_emission' || sortKey.value === 'subscribed_at') {
       av = parseDate(av)
       bv = parseDate(bv)
     }
@@ -45,8 +59,9 @@ const rows = computed(() => {
   return filtered
 })
 
-const columns: { key: keyof Project; label: string }[] = [
+const columns: { key: SortKey; label: string }[] = [
   { key: 'name', label: 'Projet' },
+  { key: 'subscribed_at', label: 'Souscription' },
   { key: 'date_emission', label: 'Émission' },
   { key: 'step', label: 'Étape' },
   { key: 'rate', label: 'Taux' },
@@ -57,7 +72,31 @@ const columns: { key: keyof Project; label: string }[] = [
 
 <template>
   <div>
-    <UInput v-model="search" placeholder="Filtrer (nom, statut...)" class="mb-3" icon="i-lucide-search" />
+    <div class="flex flex-col sm:flex-row gap-2 mb-3">
+      <UInput v-model="search" placeholder="Filtrer (nom, statut...)" icon="i-lucide-search" class="flex-1" />
+      <USelectMenu
+        v-model="stepFilter"
+        :items="stepItems"
+        value-key="value"
+        multiple
+        :search-input="false"
+        placeholder="Toutes les étapes"
+        icon="i-lucide-list-filter"
+        class="sm:w-64"
+      />
+      <UButton
+        v-if="stepFilter.length || search"
+        variant="ghost"
+        color="neutral"
+        icon="i-lucide-x"
+        @click="stepFilter = []; search = ''"
+      >
+        Réinitialiser
+      </UButton>
+    </div>
+    <p v-if="stepFilter.length || search" class="text-xs text-muted mb-2">
+      {{ rows.length }} projet(s) sur {{ projects.length }}
+    </p>
     <div class="max-h-[420px] overflow-y-auto rounded-lg border border-default">
       <table class="w-full text-sm">
         <thead class="sticky top-0 bg-elevated">
@@ -88,6 +127,17 @@ const columns: { key: keyof Project; label: string }[] = [
               >
                 <UIcon name="i-lucide-external-link" class="size-3.5 align-[-2px]" />
               </a>
+            </td>
+            <td class="px-3 py-2 whitespace-nowrap">
+              <template v-if="subscriptionDates[p.name]?.length">
+                {{ subscriptionDates[p.name]![0] }}
+                <span
+                  v-if="subscriptionDates[p.name]!.length > 1"
+                  class="text-xs text-muted cursor-help"
+                  :title="`Souscrit en ${subscriptionDates[p.name]!.length} fois : ${subscriptionDates[p.name]!.join(', ')}`"
+                >+{{ subscriptionDates[p.name]!.length - 1 }}</span>
+              </template>
+              <span v-else class="text-muted">—</span>
             </td>
             <td class="px-3 py-2">{{ p.date_emission ?? 'À venir' }}</td>
             <td class="px-3 py-2">{{ p.step }}</td>

@@ -81,6 +81,23 @@ export function computeProjectDetail(project: Project, transactions: Transaction
 }
 
 /**
+ * Dates de souscription par projet (dd/mm/yyyy, de la plus ancienne à la plus
+ * récente), tirées des transactions "Souscription" validées : l'export
+ * "liste_projets" ne les contient pas. Plusieurs dates quand le projet a été
+ * souscrit en plusieurs fois.
+ */
+export function subscriptionDatesByProject(transactions: Transaction[]): Record<string, string[]> {
+  const byProject: Record<string, string[]> = {}
+  const subscriptions = transactions
+    .filter(t => t.status === 'Validé' && t.nature === 'Souscription' && t.project)
+    .sort((a, b) => parseDate(a.date).getTime() - parseDate(b.date).getTime())
+  for (const t of subscriptions) {
+    (byProject[t.project] ??= []).push(t.date)
+  }
+  return byProject
+}
+
+/**
  * Récapitulatif fiscal par année civile de versement : intérêts bruts (calculés
  * comme Tokimo), IR et CSG retenus à la source. Les bonus n'y figurent pas.
  * Années les plus récentes en premier.
@@ -245,6 +262,7 @@ export function computeDashboard(
     monthlyCapitalRepaid: sortObj(monthlyCapitalRepaid),
     monthlyDeposits: sortObj(monthlyDeposits),
     taxByYear: computeTaxByYear(transactions),
+    subscriptionDates: subscriptionDatesByProject(transactions),
     risk: computeRisk(activeProjects, remainingCapitalOf)
   }
 }

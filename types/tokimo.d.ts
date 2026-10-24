@@ -104,5 +104,7 @@ export interface DashboardData {
   monthlyCapitalRepaid: Record<string, number>
   monthlyDeposits: Record<string, number>
   taxByYear: TaxYearSummary[]
+  /** Nom du projet -> dates de souscription (dd/mm/yyyy), de la plus ancienne à la plus récente. */
+  subscriptionDates: Record<string, string[]>
   risk: RiskBreakdown
 }

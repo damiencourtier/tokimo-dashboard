@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { computeRisk } from '../utils/computeDashboard'
-import { delayMonths, expectedEndDate, hasFirstRankMortgage, tokimoProjectUrl } from '../utils/projectInsights'
+import { delayMonths, expectedEndDate, hasFirstRankMortgage, stepCounts, tokimoProjectUrl } from '../utils/projectInsights'
 import type { Project } from '../types/tokimo'
 
 const project = (p: Partial<Project>): Project => ({
@@ -70,5 +70,18 @@ describe('infos des fiches Tokimo', () => {
     expect(risk.avgLtvWeighted).toBe(54) // (60×800 + 30×200) / 1000
     expect(risk.nbWithoutExpectedEnd).toBe(1)
     expect(risk.late).toEqual([])
+  })
+})
+
+describe('filtre par étape', () => {
+  it("liste les étapes dans l'ordre du cycle de vie, avec leur nombre de projets", () => {
+    const steps = ['Remboursement', 'Acquisition', 'Commercialisation', 'Acquisition', 'Travaux', 'Valorisation']
+    expect(stepCounts(steps.map(step => ({ step })))).toEqual([
+      { step: 'Acquisition', count: 2 },
+      { step: 'Valorisation', count: 1 },
+      { step: 'Commercialisation', count: 1 },
+      { step: 'Remboursement', count: 1 },
+      { step: 'Travaux', count: 1 }
+    ])
   })
 })

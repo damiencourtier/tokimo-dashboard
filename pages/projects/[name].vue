@@ -175,6 +175,10 @@ async function saveSheetField(field: SheetField) {
   }
 }
 
+const subscriptionDates = computed(() =>
+  project.value && detail.value ? subscriptionDatesByProject(detail.value.transactions)[project.value.name] ?? [] : []
+)
+
 const projectDelay = computed(() => (project.value ? delayMonths(project.value) : null))
 const projectEnd = computed(() => (project.value ? expectedEndDate(project.value) : null))
 
@@ -214,7 +218,7 @@ const schedule = computed(() => {
       <div class="flex items-start justify-between gap-4">
         <div>
           <h2 class="text-lg font-bold">{{ project.name }}</h2>
-          <p class="text-sm text-muted mt-1">{{ project.date_emission ? `Émission le ${project.date_emission}` : 'Émission à venir' }} · {{ project.step }}</p>
+          <p class="text-sm text-muted mt-1"><template v-if="subscriptionDates.length">Souscrit le {{ subscriptionDates.join(', ') }} · </template>{{ project.date_emission ? `Émission le ${project.date_emission}` : 'Émission à venir' }} · {{ project.step }}</p>
         </div>
         <div class="flex flex-col items-end gap-2">
           <UBadge :color="statusColor(project.status)" variant="subtle">{{ statusLabel(project.status) }}</UBadge>
