@@ -8,7 +8,9 @@ const search = ref('')
 const sortKey = ref<keyof Project>('date_emission')
 const sortDir = ref<1 | -1>(-1)
 
-function parseDate(s: string) {
+/** Date d'émission pas encore fixée -> triée comme la plus récente (à venir). */
+function parseDate(s: string | null) {
+  if (!s) return new Date(8640000000000000)
   const [d, m, y] = s.split('/')
   return new Date(Number(y), Number(m) - 1, Number(d))
 }
@@ -21,19 +23,12 @@ function sortBy(key: keyof Project) {
   }
 }
 
-const statusColor: Record<string, 'success' | 'primary' | 'warning' | 'info' | 'neutral'> = {
-  'Financé': 'success',
-  'Remboursé': 'primary',
-  'Clôturé': 'warning',
-  'Publié': 'info'
-}
-
 const rows = computed(() => {
   const q = search.value.toLowerCase()
   let filtered = props.projects.filter(
     p =>
       p.name.toLowerCase().includes(q) ||
-      p.status.toLowerCase().includes(q) ||
+      statusLabel(p.status).toLowerCase().includes(q) ||
       p.step.toLowerCase().includes(q)
   )
   filtered = filtered.slice().sort((a, b) => {
@@ -83,13 +78,26 @@ const columns: { key: keyof Project; label: string }[] = [
               <NuxtLink :to="`/projects/${encodeURIComponent(p.name)}`" class="text-violet-700 dark:text-violet-400 hover:underline">
                 {{ p.name }}
               </NuxtLink>
+              <a
+                v-if="tokimoProjectUrl(p)"
+                :href="tokimoProjectUrl(p)!"
+                target="_blank"
+                rel="noopener"
+                class="ml-1 text-muted hover:text-violet-600"
+                title="Voir la fiche sur Tokimo"
+              >
+                <UIcon name="i-lucide-external-link" class="size-3.5 align-[-2px]" />
+              </a>
             </td>
-            <td class="px-3 py-2">{{ p.date_emission }}</td>
+            <td class="px-3 py-2">{{ p.date_emission ?? 'À venir' }}</td>
             <td class="px-3 py-2">{{ p.step }}</td>
             <td class="px-3 py-2">{{ p.rate.toFixed(1) }}%</td>
             <td class="px-3 py-2">{{ p.amount.toLocaleString('fr-FR', { minimumFractionDigits: 2 }) }} €</td>
             <td class="px-3 py-2">
-              <UBadge :color="statusColor[p.status] || 'neutral'" variant="subtle">{{ p.status }}</UBadge>
+              <div class="flex flex-wrap items-center gap-1">
+                <UBadge :color="statusColor(p.status)" variant="subtle">{{ statusLabel(p.status) }}</UBadge>
+                <UBadge v-if="delayMonths(p)" color="error" variant="subtle">Retard {{ delayMonths(p) }} mois</UBadge>
+              </div>
             </td>
           </tr>
         </tbody>

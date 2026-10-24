@@ -44,8 +44,92 @@ const updatedAtLabel = computed(() => {
           <KpiCard label="Capital en cours" :value="fmtEur0(data!.kpis.activeCapital)" :sub="`${data!.kpis.nbProjectsActive} projets actifs`" />
           <KpiCard label="Capital remboursé" :value="fmtEur0(data!.kpis.reimbursedCapital)" />
           <KpiCard label="Taux cible moyen" :value="`${data!.kpis.avgRateWeightedActive.toFixed(2)} %`" sub="pondéré, capital actif" />
-          <KpiCard label="Gains nets réalisés" :value="fmtEur(data!.kpis.netInterestTotal)" sub="après IR + CSG" />
+          <KpiCard
+            label="Gains nets réalisés"
+            :value="fmtEur(data!.kpis.netInterestTotal)"
+            :sub="data!.kpis.bonusTotal ? `après IR + CSG · + ${fmtEur(data!.kpis.bonusTotal)} de bonus` : 'après IR + CSG'"
+          />
           <KpiCard label="Prévision nette / mois" :value="fmtEur(data!.kpis.monthlyForecastNet)" sub="12 prochains mois" />
+        </div>
+      </section>
+
+      <section v-if="data!.kpis.activeCapital > 0">
+        <h2 class="text-xs font-bold uppercase tracking-wide text-muted mb-3">Risque</h2>
+        <UAlert
+          v-if="data!.risk.late.length"
+          icon="i-lucide-clock-alert"
+          color="error"
+          variant="subtle"
+          class="mb-4"
+          :title="`${data!.risk.late.length} projet(s) en retard · ${fmtEur0(data!.risk.late.reduce((a, l) => a + l.remainingCapital, 0))} concernés`"
+        >
+          <template #description>
+            <ul class="mt-1 space-y-0.5">
+              <li v-for="l in data!.risk.late" :key="l.name">
+                <NuxtLink :to="`/projects/${encodeURIComponent(l.name)}`" class="hover:underline">{{ l.name }}</NuxtLink>
+                — {{ l.delayMonths }} mois, {{ fmtEur0(l.remainingCapital) }}
+              </li>
+            </ul>
+          </template>
+        </UAlert>
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-5">
+          <UCard>
+            <template #header>
+              <div class="font-semibold text-sm">Concentration par opérateur</div>
+            </template>
+            <ul class="space-y-2 text-sm">
+              <li v-for="[name, amount] in Object.entries(data!.risk.byOperator).slice(0, 6)" :key="name">
+                <div class="flex justify-between gap-2">
+                  <span class="truncate" :class="{ 'text-muted': name === 'Non renseigné' }">{{ name }}</span>
+                  <span class="font-medium whitespace-nowrap">
+                    {{ fmtEur0(amount) }} · {{ Math.round(amount / data!.kpis.activeCapital * 100) }} %
+                  </span>
+                </div>
+                <div class="h-1.5 rounded bg-elevated mt-1">
+                  <div class="h-1.5 rounded bg-violet-500" :style="{ width: (amount / data!.kpis.activeCapital * 100) + '%' }" />
+                </div>
+              </li>
+            </ul>
+          </UCard>
+          <UCard>
+            <template #header>
+              <div class="font-semibold text-sm">Garanties</div>
+            </template>
+            <div class="grid grid-cols-3 gap-2 text-center mb-3">
+              <div>
+                <div class="text-lg font-bold text-emerald-600">{{ fmtEur0(data!.risk.firstRankMortgage.covered) }}</div>
+                <div class="text-xs text-muted">hypothèque 1er rang</div>
+              </div>
+              <div>
+                <div class="text-lg font-bold text-amber-600">{{ fmtEur0(data!.risk.firstRankMortgage.notCovered) }}</div>
+                <div class="text-xs text-muted">sans</div>
+              </div>
+              <div>
+                <div class="text-lg font-bold text-muted">{{ fmtEur0(data!.risk.firstRankMortgage.unknown) }}</div>
+                <div class="text-xs text-muted">non renseigné</div>
+              </div>
+            </div>
+            <p class="text-xs text-muted leading-relaxed">
+              LTV moyen pondéré :
+              <b>{{ data!.risk.avgLtvWeighted !== null ? `${data!.risk.avgLtvWeighted.toFixed(1)} %` : '—' }}</b>
+              (sur les projets où il est renseigné).
+            </p>
+          </UCard>
+          <UCard>
+            <template #header>
+              <div class="font-semibold text-sm">Note Tokimo</div>
+            </template>
+            <ul class="space-y-1.5 text-sm">
+              <li v-for="[rating, amount] in Object.entries(data!.risk.byRating)" :key="rating" class="flex justify-between">
+                <span :class="{ 'text-muted': rating === 'Non renseignée' }">{{ rating }}</span>
+                <span class="font-medium">{{ fmtEur0(amount) }} · {{ Math.round(amount / data!.kpis.activeCapital * 100) }} %</span>
+              </li>
+            </ul>
+            <p v-if="data!.risk.nbWithoutExpectedEnd" class="text-xs text-muted leading-relaxed mt-3">
+              {{ data!.risk.nbWithoutExpectedEnd }} projet(s) en cours sans date d'émission ou durée : retard non
+              évaluable.
+            </p>
+          </UCard>
         </div>
       </section>
 
@@ -94,6 +178,39 @@ const updatedAtLabel = computed(() => {
               {{ fmtEur0(data!.kpis.totalInvested) }} investis au total pour
               {{ fmtEur0(data!.kpis.depositsTotal) }} déposés depuis ta banque : la différence vient du
               capital remboursé réinvesti automatiquement.
+            </p>
+          </UCard>
+          <UCard class="lg:col-span-2">
+            <template #header>
+              <div class="font-semibold text-sm">Récapitulatif fiscal par année</div>
+            </template>
+            <div class="overflow-x-auto">
+              <table class="w-full text-sm">
+                <thead>
+                  <tr class="text-left text-xs font-semibold uppercase tracking-wide text-muted">
+                    <th class="px-3 py-2">Année</th>
+                    <th class="px-3 py-2 text-right">Échéances</th>
+                    <th class="px-3 py-2 text-right">Intérêts bruts</th>
+                    <th class="px-3 py-2 text-right">IR prélevé</th>
+                    <th class="px-3 py-2 text-right">CSG prélevée</th>
+                    <th class="px-3 py-2 text-right">Net perçu</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="y in data!.taxByYear" :key="y.year" class="border-t border-default">
+                    <td class="px-3 py-2 font-semibold">{{ y.year }}</td>
+                    <td class="px-3 py-2 text-right">{{ y.nbEcheances }}</td>
+                    <td class="px-3 py-2 text-right">{{ fmtEur(y.grossInterest) }}</td>
+                    <td class="px-3 py-2 text-right">{{ fmtEur(y.ir) }}</td>
+                    <td class="px-3 py-2 text-right">{{ fmtEur(y.csg) }}</td>
+                    <td class="px-3 py-2 text-right">{{ fmtEur(y.netInterest) }}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <p class="text-xs text-muted leading-relaxed mt-3">
+              Par année de versement, hors bonus. Montants indicatifs, à rapprocher de l'IFU envoyé par Tokimo
+              (en général : intérêts bruts en case 2TR, IR déjà prélevé en case 2CK).
             </p>
           </UCard>
         </div>

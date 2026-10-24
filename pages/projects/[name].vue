@@ -8,13 +8,6 @@ const projectName = computed(() => decodeURIComponent(route.params.name as strin
 const project = computed(() => portfolio.data.value.projects.find(p => p.name === projectName.value) || null)
 const detail = computed(() => (project.value ? computeProjectDetail(project.value, portfolio.data.value.transactions) : null))
 
-const statusColor: Record<string, 'success' | 'primary' | 'warning' | 'info' | 'neutral'> = {
-  'Financé': 'success',
-  'Remboursé': 'primary',
-  'Clôturé': 'warning',
-  'Publié': 'info'
-}
-
 const fmtEur = (n: number) =>
   n.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €'
 const fmtEur0 = (n: number) => Math.round(n).toLocaleString('fr-FR') + ' €'
@@ -126,6 +119,65 @@ async function onRateChange() {
   }
 }
 
+// Infos des fiches Tokimo (lien, opérateur, garanties, note, LTV) : un seul
+// enregistrement générique, chaque champ étant envoyé seul au PATCH admin.
+type SheetField = 'tokimoId' | 'operator' | 'guarantees' | 'rating' | 'ltv'
+const sheet = reactive({
+  tokimoId: null as number | null,
+  operator: '',
+  guarantees: '',
+  rating: '',
+  ltv: null as number | null
+})
+const sheetSaving = ref<SheetField | null>(null)
+const sheetError = ref<Partial<Record<SheetField, string>>>({})
+
+watch(project, (p) => {
+  if (!p) return
+  sheet.tokimoId = p.tokimoId
+  sheet.operator = p.operator ?? ''
+  sheet.guarantees = (p.guarantees ?? []).join('\n')
+  sheet.rating = p.rating ?? ''
+  sheet.ltv = p.ltv
+}, { immediate: true })
+
+function sheetValue(field: SheetField) {
+  switch (field) {
+    case 'guarantees': {
+      const lines = sheet.guarantees.split('\n').map(l => l.trim()).filter(Boolean)
+      return lines.length ? lines : null
+    }
+    case 'operator':
+    case 'rating':
+      return sheet[field].trim() || null
+    default:
+      return sheet[field]
+  }
+}
+
+async function saveSheetField(field: SheetField) {
+  if (!project.value) return
+  const value = sheetValue(field)
+  if (JSON.stringify(value) === JSON.stringify(project.value[field] ?? null)) return
+  sheetSaving.value = field
+  sheetError.value = { ...sheetError.value, [field]: undefined }
+  try {
+    await api(`/projects/${encodeURIComponent(project.value.name)}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/merge-patch+json' },
+      body: { [field]: value }
+    })
+    await portfolio.refresh()
+  } catch (e: any) {
+    sheetError.value = { ...sheetError.value, [field]: apiErrorMessage(e, "Échec de l'enregistrement.") }
+  } finally {
+    sheetSaving.value = null
+  }
+}
+
+const projectDelay = computed(() => (project.value ? delayMonths(project.value) : null))
+const projectEnd = computed(() => (project.value ? expectedEndDate(project.value) : null))
+
 const today = new Date()
 
 const schedule = computed(() => {
@@ -162,17 +214,45 @@ const schedule = computed(() => {
       <div class="flex items-start justify-between gap-4">
         <div>
           <h2 class="text-lg font-bold">{{ project.name }}</h2>
-          <p class="text-sm text-muted mt-1">Émission le {{ project.date_emission }} · {{ project.step }}</p>
+          <p class="text-sm text-muted mt-1">{{ project.date_emission ? `Émission le ${project.date_emission}` : 'Émission à venir' }} · {{ project.step }}</p>
         </div>
-        <UBadge :color="statusColor[project.status] || 'neutral'" variant="subtle">{{ project.status }}</UBadge>
+        <div class="flex flex-col items-end gap-2">
+          <UBadge :color="statusColor(project.status)" variant="subtle">{{ statusLabel(project.status) }}</UBadge>
+          <UButton
+            v-if="tokimoProjectUrl(project)"
+            :to="tokimoProjectUrl(project)!"
+            target="_blank"
+            size="xs"
+            variant="ghost"
+            icon="i-lucide-external-link"
+          >
+            Fiche Tokimo
+          </UButton>
+        </div>
       </div>
+
+      <UAlert
+        v-if="projectDelay"
+        icon="i-lucide-clock-alert"
+        color="error"
+        variant="subtle"
+        :title="`En retard de ${projectDelay} mois`"
+        :description="`Fin prévue le ${projectEnd!.toLocaleDateString('fr-FR')} (émission + ${project.durationMonths} mois), projet toujours en cours.`"
+      />
+      <p v-else-if="projectEnd && project.status !== 'Remboursé' && project.status !== 'Annulé'" class="text-xs text-muted -mt-4">
+        Fin prévue le {{ projectEnd.toLocaleDateString('fr-FR') }}
+      </p>
 
       <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
         <KpiCard label="Capital investi" :value="fmtEur0(project.amount)" />
         <KpiCard label="Taux ciblé" :value="`${project.rate.toFixed(2)} %`" />
         <KpiCard label="Capital remboursé" :value="fmtEur0(detail!.kpis.capitalRepaidTotal)" />
         <KpiCard label="Capital restant" :value="fmtEur0(detail!.kpis.remainingCapital)" />
-        <KpiCard label="Gains nets" :value="fmtEur(detail!.kpis.netInterestTotal)" sub="après IR + CSG" />
+        <KpiCard
+          label="Gains nets"
+          :value="fmtEur(detail!.kpis.netInterestTotal)"
+          :sub="detail!.kpis.bonusTotal ? `après IR + CSG · + ${fmtEur(detail!.kpis.bonusTotal)} de bonus` : 'après IR + CSG'"
+        />
       </div>
 
       <UCard>
@@ -220,7 +300,63 @@ const schedule = computed(() => {
           </UFormField>
         </div>
 
+        <div v-if="isAdmin" class="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-6 pt-6 border-t border-default">
+          <UFormField label="N° de fiche Tokimo" hint="app.tokimo.eu/projects/…" :error="sheetError.tokimoId">
+            <UInputNumber
+              v-model="sheet.tokimoId"
+              :min="1"
+              :step="1"
+              :disabled="sheetSaving === 'tokimoId'"
+              class="w-full sm:w-40"
+              @blur="saveSheetField('tokimoId')"
+            />
+          </UFormField>
+          <UFormField label="Opérateur" :error="sheetError.operator">
+            <UInput v-model="sheet.operator" :disabled="sheetSaving === 'operator'" class="w-full" @blur="saveSheetField('operator')" />
+          </UFormField>
+          <div class="grid grid-cols-2 gap-4">
+            <UFormField label="Note Tokimo" :error="sheetError.rating">
+              <UInput v-model="sheet.rating" :disabled="sheetSaving === 'rating'" class="w-full" @blur="saveSheetField('rating')" />
+            </UFormField>
+            <UFormField label="LTV (%)" :error="sheetError.ltv">
+              <UInputNumber
+                v-model="sheet.ltv"
+                :min="0"
+                :max="200"
+                :step="0.1"
+                :disabled="sheetSaving === 'ltv'"
+                class="w-full"
+                @blur="saveSheetField('ltv')"
+              />
+            </UFormField>
+          </div>
+          <UFormField label="Garanties" hint="une par ligne" :error="sheetError.guarantees" class="sm:col-span-3">
+            <UTextarea
+              v-model="sheet.guarantees"
+              :rows="2"
+              autoresize
+              :disabled="sheetSaving === 'guarantees'"
+              class="w-full"
+              @blur="saveSheetField('guarantees')"
+            />
+          </UFormField>
+        </div>
+
         <div v-else class="grid grid-cols-2 sm:grid-cols-3 gap-4">
+          <div>
+            <div class="text-xs text-muted mb-1">Opérateur</div>
+            <div class="text-sm font-medium">{{ project.operator ?? 'Non renseigné' }}</div>
+          </div>
+          <div>
+            <div class="text-xs text-muted mb-1">Note Tokimo · LTV</div>
+            <div class="text-sm font-medium">
+              {{ project.rating ?? '—' }} · {{ project.ltv !== null ? `${project.ltv} %` : '—' }}
+            </div>
+          </div>
+          <div>
+            <div class="text-xs text-muted mb-1">Garanties</div>
+            <div class="text-sm font-medium">{{ project.guarantees?.join(' · ') || 'Non renseignées' }}</div>
+          </div>
           <div>
             <div class="text-xs text-muted mb-1">Taux</div>
             <div class="text-sm font-medium">{{ project.rate.toFixed(2) }} %</div>
@@ -306,7 +442,7 @@ const schedule = computed(() => {
                   <td class="px-3 py-2">{{ t.nature }}</td>
                   <td class="px-3 py-2">{{ fmtEur(t.amount) }}</td>
                   <td class="px-3 py-2">{{ fmtEur(t.capital) }}</td>
-                  <td class="px-3 py-2">{{ fmtEur(t.interest) }}</td>
+                  <td class="px-3 py-2">{{ fmtEur(grossInterestOf(t)) }}</td>
                   <td class="px-3 py-2">{{ fmtEur(t.ir) }}</td>
                   <td class="px-3 py-2">{{ fmtEur(t.csg) }}</td>
                   <td class="px-3 py-2">{{ fmtEur(t.net) }}</td>

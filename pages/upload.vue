@@ -10,20 +10,81 @@ const transactionsStatus = ref<'idle' | 'loading' | 'ok' | 'error'>('idle')
 const projectsMessage = ref('')
 const transactionsMessage = ref('')
 
+interface UploadResult {
+  ok: boolean
+  count: number
+  dryRun: boolean
+  created: string[]
+  removed: string[]
+  restored: string[]
+}
+
+// Aperçu de l'import des projets (dry run côté API, rien n'est enregistré) :
+// affiché avant confirmation, surtout pour les souscriptions qui seraient
+// marquées annulées parce qu'absentes du fichier.
+const projectsPreview = ref<UploadResult | null>(null)
+const previewLoading = ref(false)
+
+// Dernière mise à jour connue à l'arrivée sur la page : figée, pour qu'importer
+// les projets ne fasse pas ensuite passer l'export des transactions pour périmé.
+const lastUpdateBeforeImport = ref<string | null>(null)
+watch(
+  () => portfolio.data.value.updatedAt,
+  v => { lastUpdateBeforeImport.value ??= v },
+  { immediate: true }
+)
+const projectsStaleWarning = computed(() =>
+  projectsFile.value ? staleExportWarning(projectsFile.value.name, lastUpdateBeforeImport.value) : null
+)
+const transactionsStaleWarning = computed(() =>
+  transactionsFile.value ? staleExportWarning(transactionsFile.value.name, lastUpdateBeforeImport.value) : null
+)
+
+function projectsForm() {
+  const form = new FormData()
+  form.append('file', projectsFile.value!)
+  return form
+}
+
+async function previewProjects() {
+  if (!projectsFile.value) return
+  previewLoading.value = true
+  projectsPreview.value = null
+  try {
+    projectsPreview.value = await api<UploadResult>('/upload/projects', {
+      method: 'POST',
+      query: { dryRun: 1 },
+      body: projectsForm()
+    })
+  } catch (e: any) {
+    projectsStatus.value = 'error'
+    projectsMessage.value = apiErrorMessage(e, "Impossible de lire le fichier.")
+  } finally {
+    previewLoading.value = false
+  }
+}
+
+function summarize(res: UploadResult): string {
+  const parts = [`${res.count} lignes importées avec succès.`]
+  if (res.created.length) parts.push(`${res.created.length} nouvelle(s) souscription(s).`)
+  if (res.removed.length) parts.push(`Marquée(s) annulée(s) : ${res.removed.join(', ')}.`)
+  if (res.restored.length) parts.push(`Réactivée(s) : ${res.restored.join(', ')}.`)
+  return parts.join(' ')
+}
+
 async function uploadProjects() {
   if (!projectsFile.value) return
   projectsStatus.value = 'loading'
   projectsMessage.value = ''
   try {
-    const form = new FormData()
-    form.append('file', projectsFile.value)
-    const res = await api<{ ok: boolean; count: number }>('/upload/projects', {
+    const res = await api<UploadResult>('/upload/projects', {
       method: 'POST',
-      body: form
+      body: projectsForm()
     })
     await portfolio.refresh()
     projectsStatus.value = 'ok'
-    projectsMessage.value = `${res.count} lignes importées avec succès.`
+    projectsMessage.value = summarize(res)
+    projectsPreview.value = null
   } catch (e: any) {
     projectsStatus.value = 'error'
     projectsMessage.value = apiErrorMessage(e, "Échec de l'import.")
@@ -53,6 +114,9 @@ async function uploadTransactions() {
 function onProjectsChange(e: Event) {
   const input = e.target as HTMLInputElement
   projectsFile.value = input.files?.[0] || null
+  projectsStatus.value = 'idle'
+  projectsMessage.value = ''
+  previewProjects()
 }
 function onTransactionsChange(e: Event) {
   const input = e.target as HTMLInputElement
@@ -81,13 +145,45 @@ function onTransactionsChange(e: Event) {
         Fichier <code>liste_projets_du_*.csv</code> — le détail de tes souscriptions (taux, capital, statut).
       </p>
       <input type="file" accept=".csv" class="text-sm mb-3" @change="onProjectsChange" />
+      <UAlert
+        v-if="projectsStaleWarning"
+        icon="i-lucide-calendar-clock"
+        color="warning"
+        variant="subtle"
+        :description="projectsStaleWarning"
+        class="mb-3"
+      />
+      <div v-if="previewLoading" class="text-xs text-muted mb-3">Analyse du fichier…</div>
+      <div v-else-if="projectsPreview" class="mb-3 space-y-2">
+        <p class="text-sm">
+          <b>{{ projectsPreview.count }}</b> souscriptions dans le fichier
+          <span v-if="projectsPreview.created.length"> · {{ projectsPreview.created.length }} nouvelle(s)</span>
+          <span v-if="!projectsPreview.removed.length && !projectsPreview.restored.length"> · aucune souscription retirée</span>
+        </p>
+        <UAlert
+          v-if="projectsPreview.removed.length"
+          icon="i-lucide-circle-x"
+          color="warning"
+          variant="subtle"
+          :title="`${projectsPreview.removed.length} souscription(s) absente(s) du fichier seront marquées annulées`"
+          :description="projectsPreview.removed.join(', ')"
+        />
+        <UAlert
+          v-if="projectsPreview.restored.length"
+          icon="i-lucide-rotate-ccw"
+          color="info"
+          variant="subtle"
+          :title="`${projectsPreview.restored.length} souscription(s) annulée(s) seront réactivées`"
+          :description="projectsPreview.restored.join(', ')"
+        />
+      </div>
       <div class="flex items-center gap-3">
         <UButton
           :loading="projectsStatus === 'loading'"
-          :disabled="!projectsFile"
+          :disabled="!projectsFile || previewLoading"
           @click="uploadProjects"
         >
-          Importer
+          {{ projectsPreview?.removed.length ? 'Confirmer l\'import' : 'Importer' }}
         </UButton>
         <span v-if="projectsMessage" :class="projectsStatus === 'error' ? 'text-red-500' : 'text-emerald-600'" class="text-sm">
           {{ projectsMessage }}
@@ -105,6 +201,14 @@ function onTransactionsChange(e: Event) {
         des projets (les transactions sont rattachées aux projets déjà en base).
       </p>
       <input type="file" accept=".csv" class="text-sm mb-3" @change="onTransactionsChange" />
+      <UAlert
+        v-if="transactionsStaleWarning"
+        icon="i-lucide-calendar-clock"
+        color="warning"
+        variant="subtle"
+        :description="transactionsStaleWarning"
+        class="mb-3"
+      />
       <div class="flex items-center gap-3">
         <UButton
           :loading="transactionsStatus === 'loading'"

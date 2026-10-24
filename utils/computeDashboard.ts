@@ -1,4 +1,28 @@
-import type { Project, Transaction, DashboardData, ProjectDetail } from '../types/tokimo'
+import type { Project, Transaction, DashboardData, ProjectDetail, RiskBreakdown, TaxYearSummary } from '../types/tokimo'
+import { delayMonths, expectedEndDate, hasFirstRankMortgage } from './projectInsights'
+import { statusLabel } from './status'
+
+/**
+ * Statut renvoyé par l'API pour une souscription disparue du dernier export
+ * Tokimo (annulée/remboursée) : exclue de tous les totaux.
+ */
+export const STATUS_CANCELLED = 'Annulé'
+
+export function isCancelled(p: Project): boolean {
+  return p.status === STATUS_CANCELLED
+}
+
+/**
+ * Intérêts bruts d'une échéance = montant de l'échéance − part de capital,
+ * comme le calcule Tokimo. La colonne "Part des intérêts" de l'export est
+ * parfois arrondie 1 centime en dessous (83 lignes sur l'export du 24/10/2026,
+ * soit 0,83 € d'écart avec le tableau de bord Tokimo).
+ */
+export function grossInterestOf(t: Transaction): number {
+  return round2(t.echeance - t.capital)
+}
+
+const isBonus = (t: Transaction) => t.nature.startsWith('Bonus')
 
 /** dd/mm/yyyy -> "yyyy-mm" */
 function monthKey(dateStr: string): string {
@@ -21,19 +45,20 @@ export function computeProjectDetail(project: Project, transactions: Transaction
   const valid = projectTransactions.filter(t => t.status === 'Validé')
   const echeances = valid.filter(t => t.nature === "Versement de l'échéance (montant brut)")
 
-  const grossInterestTotal = round2(sum(echeances.map(t => t.interest)))
+  const grossInterestTotal = round2(sum(echeances.map(grossInterestOf)))
   const capitalRepaidTotal = round2(sum(echeances.map(t => t.capital)))
   const irTotal = round2(sum(echeances.map(t => t.ir)))
   const csgTotal = round2(sum(echeances.map(t => t.csg)))
   const netInterestTotal = round2(grossInterestTotal - irTotal - csgTotal)
   const effectiveTaxRatePct = grossInterestTotal ? round2(((irTotal + csgTotal) / grossInterestTotal) * 100) : 0
-  const remainingCapital = round2(project.amount - capitalRepaidTotal)
+  const bonusTotal = round2(sum(valid.filter(isBonus).map(t => t.amount)))
+  const remainingCapital = isCancelled(project) ? 0 : round2(project.amount - capitalRepaidTotal)
 
   const monthlyNetInterest: Record<string, number> = {}
   const monthlyCapitalRepaid: Record<string, number> = {}
   for (const t of echeances) {
     const key = monthKey(t.date)
-    monthlyNetInterest[key] = round2((monthlyNetInterest[key] || 0) + (t.interest - t.ir - t.csg))
+    monthlyNetInterest[key] = round2((monthlyNetInterest[key] || 0) + (grossInterestOf(t) - t.ir - t.csg))
     monthlyCapitalRepaid[key] = round2((monthlyCapitalRepaid[key] || 0) + t.capital)
   }
 
@@ -46,11 +71,75 @@ export function computeProjectDetail(project: Project, transactions: Transaction
       irTotal,
       csgTotal,
       effectiveTaxRatePct,
+      bonusTotal,
       capitalRepaidTotal,
       remainingCapital
     },
     monthlyNetInterest: sortObj(monthlyNetInterest),
     monthlyCapitalRepaid: sortObj(monthlyCapitalRepaid)
+  }
+}
+
+/**
+ * Récapitulatif fiscal par année civile de versement : intérêts bruts (calculés
+ * comme Tokimo), IR et CSG retenus à la source. Les bonus n'y figurent pas.
+ * Années les plus récentes en premier.
+ */
+export function computeTaxByYear(transactions: Transaction[]): TaxYearSummary[] {
+  const byYear = new Map<string, TaxYearSummary>()
+  for (const t of transactions) {
+    if (t.status !== 'Validé' || t.nature !== "Versement de l'échéance (montant brut)") continue
+    const year = t.date.split('/')[2]!
+    const row = byYear.get(year) ?? { year, nbEcheances: 0, grossInterest: 0, ir: 0, csg: 0, netInterest: 0 }
+    row.nbEcheances++
+    row.grossInterest = round2(row.grossInterest + grossInterestOf(t))
+    row.ir = round2(row.ir + t.ir)
+    row.csg = round2(row.csg + t.csg)
+    row.netInterest = round2(row.grossInterest - row.ir - row.csg)
+    byYear.set(year, row)
+  }
+  return [...byYear.values()].sort((a, b) => b.year.localeCompare(a.year))
+}
+
+export function computeRisk(
+  activeProjects: Project[],
+  remainingCapitalOf: (p: Project) => number,
+  today: Date = new Date()
+): RiskBreakdown {
+  const add = (obj: Record<string, number>, key: string, n: number) => {
+    obj[key] = round2((obj[key] || 0) + n)
+  }
+  const byOperator: Record<string, number> = {}
+  const byRating: Record<string, number> = {}
+  const firstRankMortgage = { covered: 0, notCovered: 0, unknown: 0 }
+  const late: RiskBreakdown['late'] = []
+  let ltvWeighted = 0
+  let ltvCapital = 0
+  let nbWithoutExpectedEnd = 0
+
+  for (const p of activeProjects) {
+    const capital = remainingCapitalOf(p)
+    add(byOperator, p.operator ?? 'Non renseigné', capital)
+    add(byRating, p.rating ?? 'Non renseignée', capital)
+    const mortgage = hasFirstRankMortgage(p)
+    const key = mortgage === null ? 'unknown' : mortgage ? 'covered' : 'notCovered'
+    firstRankMortgage[key] = round2(firstRankMortgage[key] + capital)
+    if (p.ltv !== null && p.ltv !== undefined) {
+      ltvWeighted += p.ltv * capital
+      ltvCapital += capital
+    }
+    if (!expectedEndDate(p)) nbWithoutExpectedEnd++
+    const delay = delayMonths(p, today)
+    if (delay) late.push({ name: p.name, delayMonths: delay, remainingCapital: capital })
+  }
+
+  return {
+    byOperator: sortByValueDesc(byOperator),
+    byRating: sortObj(byRating),
+    firstRankMortgage,
+    avgLtvWeighted: ltvCapital ? round2(ltvWeighted / ltvCapital) : null,
+    late: late.sort((a, b) => b.delayMonths - a.delayMonths),
+    nbWithoutExpectedEnd
   }
 }
 
@@ -72,9 +161,12 @@ export function computeDashboard(
   }
   const remainingCapitalOf = (p: Project) => Math.max(0, round2(p.amount - (capitalRepaidByProject.get(p.name) || 0)))
 
-  const totalInvested = round2(sum(projects.map(p => p.amount)))
-  const reimbursedCapital = round2(sum(projects.filter(p => p.status === 'Remboursé').map(p => p.amount)))
-  const activeProjects = projects.filter(p => p.status !== 'Remboursé')
+  // Les souscriptions annulées restent listées (fiche projet consultable) mais
+  // ne comptent ni dans le capital investi, ni dans le capital en cours.
+  const subscribed = projects.filter(p => !isCancelled(p))
+  const totalInvested = round2(sum(subscribed.map(p => p.amount)))
+  const reimbursedCapital = round2(sum(subscribed.filter(p => p.status === 'Remboursé').map(p => p.amount)))
+  const activeProjects = subscribed.filter(p => p.status !== 'Remboursé')
   const activeCapital = round2(sum(activeProjects.map(remainingCapitalOf)))
   const nbProjectsActive = activeProjects.length
 
@@ -82,12 +174,14 @@ export function computeDashboard(
     ? round2(sum(activeProjects.map(p => p.rate * remainingCapitalOf(p))) / activeCapital)
     : 0
 
-  const grossInterestTotal = round2(sum(echeances.map(t => t.interest)))
+  const grossInterestTotal = round2(sum(echeances.map(grossInterestOf)))
   const capitalRepaidTotal = round2(sum(echeances.map(t => t.capital)))
   const irTotal = round2(sum(echeances.map(t => t.ir)))
   const csgTotal = round2(sum(echeances.map(t => t.csg)))
   const netInterestTotal = round2(grossInterestTotal - irTotal - csgTotal)
   const effectiveTaxRatePct = grossInterestTotal ? round2(((irTotal + csgTotal) / grossInterestTotal) * 100) : 0
+  // Bonus Tokimo : comptés à part, pas dans les gains réalisés (Tokimo ne les y inclut pas).
+  const bonusTotal = round2(sum(valid.filter(isBonus).map(t => t.amount)))
 
   const depositsTotal = round2(sum(valid.filter(t => t.nature === 'Crédit du compte').map(t => t.amount)))
   const withdrawalsTotal = round2(-sum(valid.filter(t => t.nature === "Retrait de l'épargne").map(t => t.amount)))
@@ -98,7 +192,7 @@ export function computeDashboard(
 
   for (const t of echeances) {
     const key = monthKey(t.date)
-    monthlyNetInterest[key] = round2((monthlyNetInterest[key] || 0) + (t.interest - t.ir - t.csg))
+    monthlyNetInterest[key] = round2((monthlyNetInterest[key] || 0) + (grossInterestOf(t) - t.ir - t.csg))
     monthlyCapitalRepaid[key] = round2((monthlyCapitalRepaid[key] || 0) + t.capital)
   }
   for (const t of valid.filter(t => t.nature === 'Crédit du compte')) {
@@ -107,8 +201,9 @@ export function computeDashboard(
   }
 
   const statusBreakdown: Record<string, number> = {}
-  for (const p of projects) {
-    statusBreakdown[p.status] = round2((statusBreakdown[p.status] || 0) + p.amount)
+  for (const p of subscribed) {
+    const label = statusLabel(p.status)
+    statusBreakdown[label] = round2((statusBreakdown[label] || 0) + p.amount)
   }
 
   const rateBreakdown: Record<string, number> = {}
@@ -129,7 +224,7 @@ export function computeDashboard(
       totalInvested,
       activeCapital,
       reimbursedCapital,
-      nbProjectsTotal: projects.length,
+      nbProjectsTotal: subscribed.length,
       nbProjectsActive,
       avgRateWeightedActive,
       grossInterestTotal,
@@ -137,6 +232,7 @@ export function computeDashboard(
       irTotal,
       csgTotal,
       effectiveTaxRatePct,
+      bonusTotal,
       depositsTotal,
       withdrawalsTotal,
       capitalRepaidTotal,
@@ -147,7 +243,9 @@ export function computeDashboard(
     rateBreakdown,
     monthlyNetInterest: sortObj(monthlyNetInterest),
     monthlyCapitalRepaid: sortObj(monthlyCapitalRepaid),
-    monthlyDeposits: sortObj(monthlyDeposits)
+    monthlyDeposits: sortObj(monthlyDeposits),
+    taxByYear: computeTaxByYear(transactions),
+    risk: computeRisk(activeProjects, remainingCapitalOf)
   }
 }
 
@@ -156,6 +254,9 @@ function sum(arr: number[]): number {
 }
 function round2(n: number): number {
   return Math.round(n * 100) / 100
+}
+function sortByValueDesc(obj: Record<string, number>): Record<string, number> {
+  return Object.fromEntries(Object.entries(obj).sort(([, a], [, b]) => b - a))
 }
 function sortObj(obj: Record<string, number>): Record<string, number> {
   return Object.fromEntries(Object.entries(obj).sort(([a], [b]) => a.localeCompare(b)))
