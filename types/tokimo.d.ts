@@ -113,4 +113,49 @@ export interface DashboardData {
   /** Nom du projet -> dates de souscription (dd/mm/yyyy), de la plus ancienne à la plus récente. */
   subscriptionDates: Record<string, string[]>
   risk: RiskBreakdown
+  /** Capital restant dû des projets non remboursés (souscriptions annulées exclues). */
+  remainingCapitalByProject: Record<string, number>
+}
+
+/** Opportunité ouverte sur Tokimo, relevée par Claude in Chrome (données factuelles). */
+export interface Opportunity {
+  tokimoId: number
+  name: string
+  city?: string | null
+  category?: string | null
+  fundingStatus?: string | null
+  rate?: number | null
+  durationMonths?: number | null
+  paymentType?: string | null
+  targetAmount?: number | null
+  collectedAmount?: number | null
+  minTicket?: number | null
+  guarantees?: string[] | null
+  ltv?: number | null
+  ltc?: number | null
+  equity?: number | null
+  rating?: string | null
+  ratingLabel?: string | null
+  subScores?: Record<string, number> | null
+  operator?: string | null
+  preSalesPct?: number | null
+  bonus?: string | null
+  updatedAt: string
+}
+
+/** Critères d'investissement du compte : null / false = critère non appliqué. */
+export interface InvestmentCriteria {
+  /** Lecture seule (API) : critères déjà enregistrés par le compte. */
+  saved?: boolean
+  requireFirstRankMortgage: boolean
+  loansOnly: boolean
+  maxLtv?: number | null
+  maxLtc?: number | null
+  allowedRatings?: string[] | null
+  minRate?: number | null
+  maxDurationMonths?: number | null
+  minPreSalesPct?: number | null
+  maxOperatorSharePct?: number | null
+  excludeOperatorsWithOverdueProjects: boolean
+  ticketAmount?: number | null
 }

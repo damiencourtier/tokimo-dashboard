@@ -1,4 +1,4 @@
-import type { Project } from '../types/tokimo'
+import type { Opportunity, Project } from '../types/tokimo'
 
 export type PromptScope = 'active_missing' | 'all_missing' | 'active' | 'all' | 'selection'
 
@@ -29,5 +29,23 @@ export function buildChromePrompt(template: string, projects: Project[], dashboa
   const list = `les ${names.length} projet(s) suivant(s), noms exacts tels qu'affichés dans le dashboard :\n\n${names.map(n => `- ${n}`).join('\n')}`
   return template
     .replaceAll('{{PROJETS}}', list)
+    .replaceAll('{{DASHBOARD_URL}}', dashboardUrl.replace(/\/$/, ''))
+}
+
+/**
+ * Remplit le modèle docs/prompt-claude-chrome-opportunites.md : adresse du
+ * dashboard et opportunités déjà connues comme "En cours", dont le statut est
+ * à revérifier même si elles ont quitté l'onglet "En cours" de Tokimo.
+ */
+export function buildOpportunitiesPrompt(
+  template: string,
+  knownOpen: Pick<Opportunity, 'tokimoId' | 'name'>[],
+  dashboardUrl: string
+): string {
+  const known = knownOpen.length
+    ? knownOpen.map(o => `- ${o.name} : https://app.tokimo.eu/projects/${o.tokimoId}`).join('\n')
+    : '(aucune pour l’instant)'
+  return template
+    .replaceAll('{{OPPORTUNITES_CONNUES}}', known)
     .replaceAll('{{DASHBOARD_URL}}', dashboardUrl.replace(/\/$/, ''))
 }

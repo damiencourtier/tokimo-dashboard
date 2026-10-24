@@ -22,6 +22,9 @@ async function logout() {
           <UButton to="/simulateur" variant="ghost" color="neutral" class="text-white hover:bg-white/10">
             Simulateur
           </UButton>
+          <UButton to="/opportunites" variant="ghost" color="neutral" class="text-white hover:bg-white/10">
+            Opportunités
+          </UButton>
           <UButton to="/upload" variant="ghost" color="neutral" class="text-white hover:bg-white/10">
             Mettre à jour les données
           </UButton>

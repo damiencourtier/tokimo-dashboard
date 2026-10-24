@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
-import { buildChromePrompt, projectsForScope } from '../utils/chromePrompt'
+import { buildChromePrompt, buildOpportunitiesPrompt, projectsForScope } from '../utils/chromePrompt'
 import type { Project } from '../types/tokimo'
 
 const project = (name: string, status: string, tokimoId: number | null = null): Project => ({
@@ -48,5 +48,20 @@ describe('prompt Claude in Chrome', () => {
     expect(prompt).toContain('- CHAMP DE MARS, PARIS\n- ZONZA CAVU - CORSE')
     expect(prompt).toContain('Ouvre https://tokimo-dashboard.netlify.app (je suis connecté')
     expect(prompt).toContain('`https://tokimo-dashboard.netlify.app/projects/<nom')
+  })
+})
+
+describe('prompt des opportunités', () => {
+  const template = readFileSync(new URL('../docs/prompt-claude-chrome-opportunites.md', import.meta.url), 'utf8')
+
+  it('liste les opportunités déjà connues comme en cours, avec le lien de leur fiche', () => {
+    const prompt = buildOpportunitiesPrompt(template, [{ tokimoId: 135, name: 'ISSY-LES-MOULINEAUX - RODIN' }], 'https://tokimo-dashboard.netlify.app')
+    expect(prompt).not.toMatch(/\{\{\w+\}\}/)
+    expect(prompt).toContain('- ISSY-LES-MOULINEAUX - RODIN : https://app.tokimo.eu/projects/135')
+    expect(prompt).toContain('Ouvre https://tokimo-dashboard.netlify.app/opportunites')
+  })
+
+  it('le signale quand il n’y en a aucune', () => {
+    expect(buildOpportunitiesPrompt(template, [], 'https://x.test')).toContain('(aucune pour l’instant)')
   })
 })

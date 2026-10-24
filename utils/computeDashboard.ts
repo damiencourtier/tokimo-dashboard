@@ -264,7 +264,8 @@ export function computeDashboard(
     monthlyDeposits: sortObj(monthlyDeposits),
     taxByYear: computeTaxByYear(transactions),
     subscriptionDates: subscriptionDatesByProject(transactions),
-    risk: computeRisk(activeProjects, remainingCapitalOf)
+    risk: computeRisk(activeProjects, remainingCapitalOf),
+    remainingCapitalByProject: Object.fromEntries(activeProjects.map(p => [p.name, remainingCapitalOf(p)]))
   }
 }
 
