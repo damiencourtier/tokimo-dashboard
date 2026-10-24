@@ -26,10 +26,14 @@ const chartData = computed(() => ({
 }))
 
 const chartOptions = {
+  // Hauteur fixée par le conteneur (même hauteur que le graphique voisin).
+  maintainAspectRatio: false,
   plugins: { legend: { position: 'bottom' as const, labels: { boxWidth: 10, font: { size: 11 } } } }
 }
 </script>
 
 <template>
-  <Doughnut :key="$colorMode.value" :data="chartData" :options="chartOptions" />
+  <div class="h-[280px]">
+    <Doughnut :key="$colorMode.value" :data="chartData" :options="chartOptions" />
+  </div>
 </template>

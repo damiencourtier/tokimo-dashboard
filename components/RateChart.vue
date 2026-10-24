@@ -21,11 +21,15 @@ const chartData = computed(() => ({
 }))
 
 const chartOptions = {
+  // Hauteur fixée par le conteneur (même hauteur que le graphique voisin).
+  maintainAspectRatio: false,
   plugins: { legend: { display: false } },
   scales: { y: { beginAtZero: true } }
 }
 </script>
 
 <template>
-  <Bar :key="$colorMode.value" :data="chartData" :options="chartOptions" />
+  <div class="h-[280px]">
+    <Bar :key="$colorMode.value" :data="chartData" :options="chartOptions" />
+  </div>
 </template>

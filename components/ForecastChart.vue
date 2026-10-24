@@ -1,82 +1,79 @@
 <script setup lang="ts">
 import { Line } from 'vue-chartjs'
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 
 const props = defineProps<{
   monthlyNetInterest: Record<string, number>
   monthlyForecastNet: number
 }>()
 
-const months = computed(() => Object.keys(props.monthlyNetInterest).sort())
-const lastMonths = computed(() => months.value.slice(-6))
+const periods = [
+  { label: '6 mois', value: 6 },
+  { label: '12 mois', value: 12 },
+  { label: '24 mois', value: 24 },
+  { label: 'Tout', value: 0 }
+]
+// 0 = tout l'historique depuis le premier versement.
+const period = ref(12)
 
-function addMonths(ym: string, n: number): string {
-  const [y, m] = ym.split('-').map(Number)
-  const d = new Date(y, m - 1 + n, 1)
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
-}
-
-const forecastLabels = computed(() => {
-  const last = months.value[months.value.length - 1]
-  if (!last) return []
-  return Array.from({ length: 12 }, (_, i) => addMonths(last, i + 1))
-})
-
-const allLabels = computed(() => lastMonths.value.concat(forecastLabels.value))
-
-const histSeries = computed(() =>
-  lastMonths.value.map(m => props.monthlyNetInterest[m] || 0).concat(Array(12).fill(null))
+const timeline = computed(() =>
+  buildNetInterestTimeline(props.monthlyNetInterest, props.monthlyForecastNet, period.value || null)
 )
 
-const foreSeries = computed(() => {
-  const bridge = lastMonths.value.length
-    ? props.monthlyNetInterest[lastMonths.value[lastMonths.value.length - 1]] || 0
-    : 0
-  return Array(Math.max(lastMonths.value.length - 1, 0))
-    .fill(null)
-    .concat([bridge])
-    .concat(Array(12).fill(props.monthlyForecastNet))
-})
-
 const chartData = computed(() => ({
-  labels: allLabels.value,
+  labels: timeline.value.labels,
   datasets: [
     {
       label: 'Intérêts nets réels',
-      data: histSeries.value,
+      data: timeline.value.history,
       borderColor: '#6C3EF4',
       backgroundColor: 'transparent',
       tension: 0.25,
-      pointRadius: 3
+      pointRadius: period.value && period.value <= 12 ? 3 : 1.5
     },
     {
       label: 'Prévision nette (théorique)',
-      data: foreSeries.value,
+      data: timeline.value.forecast,
       borderColor: '#F5A623',
       borderDash: [6, 4],
       backgroundColor: 'transparent',
       tension: 0.1,
-      pointRadius: 3
+      pointRadius: 2
     }
   ]
 }))
 
 const chartOptions = {
   plugins: { legend: { position: 'top' as const, labels: { boxWidth: 10, font: { size: 11 } } } },
-  scales: { y: { beginAtZero: true, title: { display: true, text: '€ net / mois' } } }
+  scales: {
+    x: { ticks: { autoSkip: true, maxRotation: 0, font: { size: 10 } } },
+    y: { beginAtZero: true, title: { display: true, text: '€ net / mois' } }
+  }
 }
 
-const avgLast6 = computed(() => {
-  if (!lastMonths.value.length) return 0
-  const total = lastMonths.value.reduce((s, m) => s + (props.monthlyNetInterest[m] || 0), 0)
-  return total / lastMonths.value.length
-})
+// Moyenne sur les 6 derniers mois calendaires (mois sans versement comptés à 0).
+const avgLast6 = computed(() => averageLastMonths(props.monthlyNetInterest, 6))
 
 defineExpose({ avgLast6 })
 </script>
 
 <template>
   <div>
+    <div class="flex justify-end mb-2">
+      <div class="inline-flex rounded-lg border border-default p-0.5" role="group" aria-label="Période de l'historique">
+        <UButton
+          v-for="p in periods"
+          :key="p.value"
+          size="xs"
+          :variant="period === p.value ? 'solid' : 'ghost'"
+          :color="period === p.value ? 'primary' : 'neutral'"
+          :aria-pressed="period === p.value"
+          @click="period = p.value"
+        >
+          {{ p.label }}
+        </UButton>
+      </div>
+    </div>
     <Line :key="$colorMode.value" :data="chartData" :options="chartOptions" />
     <p class="text-xs text-muted mt-3 leading-relaxed">
       Estimation : environ <b>{{ monthlyForecastNet.toFixed(0) }} € net/mois</b> d'intérêts

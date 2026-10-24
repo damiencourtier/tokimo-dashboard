@@ -433,10 +433,7 @@ const schedule = computed(() => {
             <div class="font-semibold text-sm">Cash-flow du projet</div>
           </template>
           <ClientOnly>
-            <CashflowChart
-              :monthly-net-interest="detail!.monthlyNetInterest"
-              :monthly-capital-repaid="detail!.monthlyCapitalRepaid"
-            />
+            <CashflowChart :transactions="detail!.transactions" />
           </ClientOnly>
         </UCard>
       </section>

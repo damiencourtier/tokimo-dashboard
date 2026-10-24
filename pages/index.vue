@@ -237,44 +237,12 @@ const updatedAtLabel = computed(() => {
         </div>
       </section>
 
-      <section v-if="data!.hasTransactions">
-        <h2 class="text-xs font-bold uppercase tracking-wide text-muted mb-3">Performance &amp; répartition</h2>
-        <div class="grid grid-cols-1 lg:grid-cols-3 gap-5">
-          <UCard class="lg:col-span-2">
-            <template #header>
-              <div class="font-semibold text-sm">Cash-flow mensuel</div>
-            </template>
-            <ClientOnly>
-              <CashflowChart
-                :monthly-net-interest="data!.monthlyNetInterest"
-                :monthly-capital-repaid="data!.monthlyCapitalRepaid"
-              />
-            </ClientOnly>
-          </UCard>
-          <UCard>
-            <template #header>
-              <div class="font-semibold text-sm">Répartition par statut</div>
-            </template>
-            <ClientOnly>
-              <StatusChart :status-breakdown="data!.statusBreakdown" />
-            </ClientOnly>
-          </UCard>
-        </div>
-      </section>
-
       <section>
-        <div class="grid grid-cols-1 lg:grid-cols-3 gap-5">
-          <UCard>
+        <h2 class="text-xs font-bold uppercase tracking-wide text-muted mb-3">Performance &amp; répartition</h2>
+        <div class="space-y-5">
+          <UCard v-if="data!.hasTransactions">
             <template #header>
-              <div class="font-semibold text-sm">Répartition par taux ciblé</div>
-            </template>
-            <ClientOnly>
-              <RateChart :rate-breakdown="data!.rateBreakdown" />
-            </ClientOnly>
-          </UCard>
-          <UCard v-if="data!.hasTransactions" class="lg:col-span-2">
-            <template #header>
-              <div class="font-semibold text-sm">Prévision d'intérêts nets — 12 prochains mois</div>
+              <div class="font-semibold text-sm">Intérêts nets : historique et prévision sur 12 mois</div>
             </template>
             <ClientOnly>
               <ForecastChart
@@ -283,6 +251,32 @@ const updatedAtLabel = computed(() => {
               />
             </ClientOnly>
           </UCard>
+          <UCard v-if="data!.hasTransactions">
+            <template #header>
+              <div class="font-semibold text-sm">Cash-flow</div>
+            </template>
+            <ClientOnly>
+              <CashflowChart :transactions="portfolio.data.value.transactions" />
+            </ClientOnly>
+          </UCard>
+          <div class="grid grid-cols-1 lg:grid-cols-2 gap-5">
+            <UCard v-if="data!.hasTransactions">
+              <template #header>
+                <div class="font-semibold text-sm">Répartition par statut</div>
+              </template>
+              <ClientOnly>
+                <StatusChart :status-breakdown="data!.statusBreakdown" />
+              </ClientOnly>
+            </UCard>
+            <UCard>
+              <template #header>
+                <div class="font-semibold text-sm">Répartition par taux ciblé</div>
+              </template>
+              <ClientOnly>
+                <RateChart :rate-breakdown="data!.rateBreakdown" />
+              </ClientOnly>
+            </UCard>
+          </div>
         </div>
       </section>
 
