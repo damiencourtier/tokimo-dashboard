@@ -77,7 +77,7 @@ defineExpose({ avgLast6 })
 
 <template>
   <div>
-    <Line :data="chartData" :options="chartOptions" />
+    <Line :key="$colorMode.value" :data="chartData" :options="chartOptions" />
     <p class="text-xs text-muted mt-3 leading-relaxed">
       Estimation : environ <b>{{ monthlyForecastNet.toFixed(0) }} € net/mois</b> d'intérêts
       (soit ~{{ (monthlyForecastNet * 12).toFixed(0) }} €/an net) sur le capital actuellement actif,

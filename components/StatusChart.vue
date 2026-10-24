@@ -31,5 +31,5 @@ const chartOptions = {
 </script>
 
 <template>
-  <Doughnut :data="chartData" :options="chartOptions" />
+  <Doughnut :key="$colorMode.value" :data="chartData" :options="chartOptions" />
 </template>

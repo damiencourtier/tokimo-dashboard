@@ -31,6 +31,7 @@ async function logout() {
           <UButton v-if="isAdmin" to="/admin/prompt-chrome" variant="ghost" color="neutral" class="text-white hover:bg-white/10">
             Prompt Chrome
           </UButton>
+          <ColorModeToggle class="text-white hover:bg-white/10" />
           <UButton variant="ghost" color="neutral" icon="i-lucide-log-out" class="text-white hover:bg-white/10" @click="logout">
             Déconnexion
           </UButton>

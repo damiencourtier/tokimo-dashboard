@@ -30,5 +30,5 @@ const chartOptions = {
 </script>
 
 <template>
-  <Line :data="chartData" :options="chartOptions" />
+  <Line :key="$colorMode.value" :data="chartData" :options="chartOptions" />
 </template>
