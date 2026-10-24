@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { computeRisk } from '../utils/computeDashboard'
-import { delayMonths, expectedEndDate, hasFirstRankMortgage, stepCounts, tokimoProjectUrl } from '../utils/projectInsights'
+import { delayMonths, expectedEndDate, frDateToIso, hasFirstRankMortgage, isFullyRepaid, latestNews, stepCounts, tokimoProjectUrl } from '../utils/projectInsights'
 import type { Project } from '../types/tokimo'
 
 const project = (p: Partial<Project>): Project => ({
@@ -17,6 +17,8 @@ const project = (p: Partial<Project>): Project => ({
   guarantees: ['Hypothèque inscrite de 1er rang', 'Caution personnelle des associés de la société'],
   rating: 'A',
   ltv: 27,
+  lastNewsDate: null,
+  lastNewsTitle: null,
   ...p
 })
 
@@ -83,5 +85,50 @@ describe('filtre par étape', () => {
       { step: 'Remboursement', count: 1 },
       { step: 'Travaux', count: 1 }
     ])
+  })
+})
+
+describe('projet remboursé mais encore "Financé" chez Tokimo', () => {
+  // SANARY - l'OLIVERAIE : émis le 05/11/2024 pour 12 mois, 499,99 € de capital remboursés sur 500 €.
+  const sanary = project({ name: "SANARY - l'OLIVERAIE", date_emission: '05/11/2024', durationMonths: 12, amount: 500, status: 'Financé' })
+  const today = new Date(2026, 9, 24)
+
+  it("n'est pas signalé en dépassement quand le capital restant est négligeable", () => {
+    expect(delayMonths(sanary, today, 0.01)).toBeNull()
+    expect(isFullyRepaid(sanary, 0.01)).toBe(true)
+  })
+
+  it('reste signalé tant qu’une part significative du capital est due', () => {
+    expect(delayMonths(sanary, today, 172.14)).toBe(12)
+    expect(isFullyRepaid(sanary, 172.14)).toBe(false)
+  })
+
+  it('sort de la liste des dépassements et des projets non évaluables du dashboard', () => {
+    const late = project({ name: 'CHAMP DE MARS, PARIS', date_emission: '05/12/2023', durationMonths: 12, amount: 500 })
+    const repaid = { ...sanary, durationMonths: null }
+    const remaining: Record<string, number> = { "SANARY - l'OLIVERAIE": 0.01, 'CHAMP DE MARS, PARIS': 500 }
+    const risk = computeRisk([sanary, late, repaid], p => remaining[p.name]!, today)
+    expect(risk.late).toEqual([{ name: 'CHAMP DE MARS, PARIS', delayMonths: 23, remainingCapital: 500, amount: 500 }])
+    expect(risk.nbWithoutExpectedEnd).toBe(0)
+  })
+})
+
+describe('dernières actualités', () => {
+  it('liste les actualités renseignées, la plus récente en premier', () => {
+    const projects = [
+      project({ name: "SANARY - l'OLIVERAIE", lastNewsDate: '02/10/2026', lastNewsTitle: 'Fin du projet' }),
+      project({ name: 'CHAMP DE MARS, PARIS', lastNewsDate: '15/01/2026', lastNewsTitle: 'Point travaux' }),
+      project({ name: 'LYON 8 FERRET', lastNewsDate: '20/10/2026', lastNewsTitle: 'Acte signé' }),
+      project({ name: 'SANS ACTU' })
+    ]
+    expect(latestNews(projects, 2)).toEqual([
+      { name: 'LYON 8 FERRET', date: '20/10/2026', title: 'Acte signé' },
+      { name: "SANARY - l'OLIVERAIE", date: '02/10/2026', title: 'Fin du projet' }
+    ])
+  })
+
+  it('convertit la date au format du champ date et de l’API', () => {
+    expect(frDateToIso('02/10/2026')).toBe('2026-10-02')
+    expect(frDateToIso(null)).toBeNull()
   })
 })

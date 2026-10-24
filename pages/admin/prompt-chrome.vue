@@ -25,6 +25,7 @@ const count = (s: PromptScope) => new Set(projectsForScope(portfolio.data.value.
 const scopeItems = computed(() => [
   { value: 'active_missing', label: `Projets en cours sans fiche Tokimo (${count('active_missing')})` },
   { value: 'all_missing', label: `Tous les projets sans fiche Tokimo, remboursés compris (${count('all_missing')})` },
+  { value: 'active', label: `Tous les projets en cours, pour rafraîchir les actualités (${count('active')})` },
   { value: 'all', label: `Tous les projets, pour tout mettre à jour (${count('all')})` },
   { value: 'selection', label: 'Seulement les projets que je choisis' }
 ])
@@ -52,7 +53,7 @@ async function copy() {
       <h2 class="text-lg font-bold">Prompt Claude in Chrome : fiches Tokimo</h2>
       <p class="text-sm text-muted mt-1">
         Copie ce prompt et colle-le dans Claude in Chrome. Il lit les fiches projet sur Tokimo (opérateur,
-        garanties, note, LTV, durée, type de versement), te montre un récapitulatif à valider, puis remplit les
+        garanties, note, LTV, durée, type de versement, dernière actualité), te montre un récapitulatif à valider, puis remplit les
         fiches projet de ce dashboard. La liste des projets ci-dessous est calculée à partir de tes données.
       </p>
     </div>

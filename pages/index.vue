@@ -6,6 +6,12 @@ const data = computed(() => {
   return computeDashboard(portfolio.data.value.projects, portfolio.data.value.transactions, portfolio.data.value.updatedAt)
 })
 
+// Actualités des projets pas encore clos (les souscriptions annulées ou
+// remboursées n'apportent plus d'information utile).
+const news = computed(() =>
+  data.value ? latestNews(data.value.projects.filter(p => p.status !== 'Remboursé' && p.status !== 'Annulé')) : []
+)
+
 const fmtEur = (n: number) =>
   n.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €'
 const fmtEur0 = (n: number) => Math.round(n).toLocaleString('fr-FR') + ' €'
@@ -58,16 +64,16 @@ const updatedAtLabel = computed(() => {
         <UAlert
           v-if="data!.risk.late.length"
           icon="i-lucide-clock-alert"
-          color="error"
+          color="warning"
           variant="subtle"
           class="mb-4"
-          :title="`${data!.risk.late.length} projet(s) en retard · ${fmtEur0(data!.risk.late.reduce((a, l) => a + l.remainingCapital, 0))} concernés`"
+          :title="`${data!.risk.late.length} projet(s) au-delà de leur durée cible · ${fmtEur0(data!.risk.late.reduce((a, l) => a + l.remainingCapital, 0))} restant à rembourser`"
         >
           <template #description>
             <ul class="mt-1 space-y-0.5">
               <li v-for="l in data!.risk.late" :key="l.name">
                 <NuxtLink :to="`/projects/${encodeURIComponent(l.name)}`" class="hover:underline">{{ l.name }}</NuxtLink>
-                — {{ l.delayMonths }} mois, {{ fmtEur0(l.remainingCapital) }}
+                — dépassée de {{ l.delayMonths }} mois, reste {{ fmtEur0(l.remainingCapital) }} sur {{ fmtEur0(l.amount) }}
               </li>
             </ul>
           </template>
@@ -131,6 +137,21 @@ const updatedAtLabel = computed(() => {
             </p>
           </UCard>
         </div>
+      </section>
+
+      <section v-if="news.length">
+        <h2 class="text-xs font-bold uppercase tracking-wide text-muted mb-3">Dernières actualités</h2>
+        <UCard>
+          <ul class="divide-y divide-default text-sm -my-2">
+            <li v-for="n in news" :key="n.name" class="py-2 flex flex-col sm:flex-row sm:items-baseline gap-x-3">
+              <span class="text-xs text-muted whitespace-nowrap w-20">{{ n.date }}</span>
+              <NuxtLink :to="`/projects/${encodeURIComponent(n.name)}`" class="font-medium hover:underline whitespace-nowrap">
+                {{ n.name }}
+              </NuxtLink>
+              <span class="text-muted">{{ n.title }}</span>
+            </li>
+          </ul>
+        </UCard>
       </section>
 
       <section v-if="data!.hasTransactions">
@@ -270,7 +291,11 @@ const updatedAtLabel = computed(() => {
           <template #header>
             <div class="font-semibold text-sm">Détail des {{ data!.kpis.nbProjectsTotal }} souscriptions</div>
           </template>
-          <ProjectsTable :projects="data!.projects" :subscription-dates="data!.subscriptionDates" />
+          <ProjectsTable
+            :projects="data!.projects"
+            :subscription-dates="data!.subscriptionDates"
+            :delays="Object.fromEntries(data!.risk.late.map(l => [l.name, l.delayMonths]))"
+          />
         </UCard>
       </section>
     </div>

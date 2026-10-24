@@ -6,7 +6,9 @@ const props = withDefaults(defineProps<{
   projects: Project[]
   /** Nom du projet -> dates de souscription (dd/mm/yyyy), la plus ancienne en premier. */
   subscriptionDates?: Record<string, string[]>
-}>(), { subscriptionDates: () => ({}) })
+  /** Nom du projet -> mois au-delà de la durée cible (projets non remboursés uniquement). */
+  delays?: Record<string, number>
+}>(), { subscriptionDates: () => ({}), delays: () => ({}) })
 
 /** Colonne calculée, absente de Project : première date de souscription. */
 type SortKey = keyof Project | 'subscribed_at'
@@ -146,7 +148,14 @@ const columns: { key: SortKey; label: string }[] = [
             <td class="px-3 py-2">
               <div class="flex flex-wrap items-center gap-1">
                 <UBadge :color="statusColor(p.status)" variant="subtle">{{ statusLabel(p.status) }}</UBadge>
-                <UBadge v-if="delayMonths(p)" color="error" variant="subtle">Retard {{ delayMonths(p) }} mois</UBadge>
+                <UBadge
+                  v-if="delays[p.name]"
+                  color="warning"
+                  variant="subtle"
+                  :title="`Durée cible dépassée de ${delays[p.name]} mois, capital pas encore entièrement remboursé`"
+                >
+                  +{{ delays[p.name] }} mois
+                </UBadge>
               </div>
             </td>
           </tr>

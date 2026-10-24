@@ -1,5 +1,5 @@
 import type { Project, Transaction, DashboardData, ProjectDetail, RiskBreakdown, TaxYearSummary } from '../types/tokimo'
-import { delayMonths, expectedEndDate, hasFirstRankMortgage } from './projectInsights'
+import { delayMonths, expectedEndDate, hasFirstRankMortgage, isFullyRepaid } from './projectInsights'
 import { statusLabel } from './status'
 
 /**
@@ -145,9 +145,10 @@ export function computeRisk(
       ltvWeighted += p.ltv * capital
       ltvCapital += capital
     }
+    if (isFullyRepaid(p, capital)) continue
     if (!expectedEndDate(p)) nbWithoutExpectedEnd++
-    const delay = delayMonths(p, today)
-    if (delay) late.push({ name: p.name, delayMonths: delay, remainingCapital: capital })
+    const delay = delayMonths(p, today, capital)
+    if (delay) late.push({ name: p.name, delayMonths: delay, remainingCapital: capital, amount: p.amount })
   }
 
   return {

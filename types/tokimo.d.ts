@@ -18,6 +18,9 @@ export interface Project extends ProjectCsvRow {
   guarantees: string[] | null
   rating: string | null
   ltv: number | null
+  /** Dernière actualité Tokimo du projet : date (dd/mm/yyyy) et titre, jamais le contenu. */
+  lastNewsDate: string | null
+  lastNewsTitle: string | null
 }
 
 export interface Transaction {
@@ -68,9 +71,12 @@ export interface RiskBreakdown {
   firstRankMortgage: { covered: number; notCovered: number; unknown: number }
   /** LTV moyen pondéré par le capital en cours, sur les projets où il est renseigné. */
   avgLtvWeighted: number | null
-  /** Projets en cours en retard (fin prévue dépassée), du plus en retard au moins. */
-  late: { name: string; delayMonths: number; remainingCapital: number }[]
-  /** Projets en cours sans date d'émission ou sans durée : retard non évaluable. */
+  /**
+   * Projets pas encore remboursés dont la durée cible est dépassée, du plus long
+   * dépassement au plus court (les projets au capital déjà remboursé en sont exclus).
+   */
+  late: { name: string; delayMonths: number; remainingCapital: number; amount: number }[]
+  /** Projets non remboursés sans date d'émission ou sans durée : dépassement non évaluable. */
   nbWithoutExpectedEnd: number
 }
 

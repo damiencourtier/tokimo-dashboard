@@ -16,7 +16,9 @@ const project = (name: string, status: string, tokimoId: number | null = null): 
   operator: null,
   guarantees: null,
   rating: null,
-  ltv: null
+  ltv: null,
+  lastNewsDate: null,
+  lastNewsTitle: null
 })
 
 const projects = [
@@ -33,6 +35,7 @@ describe('prompt Claude in Chrome', () => {
     expect(names(projectsForScope(projects, 'active_missing'))).toEqual(['CHAMP DE MARS, PARIS', 'ZONZA CAVU - CORSE'])
     expect(names(projectsForScope(projects, 'all_missing'))).toEqual(['CHAMP DE MARS, PARIS', 'ZONZA CAVU - CORSE', 'LA CIOTAT'])
     expect(projectsForScope(projects, 'all')).toHaveLength(4)
+    expect(names(projectsForScope(projects, 'active'))).toEqual(['CHAMP DE MARS, PARIS', 'ZONZA CAVU - CORSE', 'MONTEREAU - DEUX RIVES'])
     expect(names(projectsForScope(projects, 'selection', ['LA CIOTAT', 'BANDOL - 87 CAPELAN']))).toEqual(['LA CIOTAT'])
   })
 

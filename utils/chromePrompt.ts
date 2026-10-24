@@ -1,6 +1,6 @@
 import type { Project } from '../types/tokimo'
 
-export type PromptScope = 'active_missing' | 'all_missing' | 'all' | 'selection'
+export type PromptScope = 'active_missing' | 'all_missing' | 'active' | 'all' | 'selection'
 
 /** Projets à traiter selon la portée choisie (jamais les souscriptions annulées). */
 export function projectsForScope(projects: Project[], scope: PromptScope, selection: string[] = []): Project[] {
@@ -10,6 +10,8 @@ export function projectsForScope(projects: Project[], scope: PromptScope, select
       return subscribed.filter(p => p.status !== 'Remboursé' && !p.tokimoId)
     case 'all_missing':
       return subscribed.filter(p => !p.tokimoId)
+    case 'active':
+      return subscribed.filter(p => p.status !== 'Remboursé')
     case 'all':
       return subscribed
     case 'selection':

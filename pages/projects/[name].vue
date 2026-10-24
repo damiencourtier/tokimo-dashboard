@@ -121,13 +121,15 @@ async function onRateChange() {
 
 // Infos des fiches Tokimo (lien, opérateur, garanties, note, LTV) : un seul
 // enregistrement générique, chaque champ étant envoyé seul au PATCH admin.
-type SheetField = 'tokimoId' | 'operator' | 'guarantees' | 'rating' | 'ltv'
+type SheetField = 'tokimoId' | 'operator' | 'guarantees' | 'rating' | 'ltv' | 'lastNewsDate' | 'lastNewsTitle'
 const sheet = reactive({
   tokimoId: null as number | null,
   operator: '',
   guarantees: '',
   rating: '',
-  ltv: null as number | null
+  ltv: null as number | null,
+  lastNewsDate: '', // yyyy-mm-dd (<input type="date">)
+  lastNewsTitle: ''
 })
 const sheetSaving = ref<SheetField | null>(null)
 const sheetError = ref<Partial<Record<SheetField, string>>>({})
@@ -139,6 +141,8 @@ watch(project, (p) => {
   sheet.guarantees = (p.guarantees ?? []).join('\n')
   sheet.rating = p.rating ?? ''
   sheet.ltv = p.ltv
+  sheet.lastNewsDate = frDateToIso(p.lastNewsDate) ?? ''
+  sheet.lastNewsTitle = p.lastNewsTitle ?? ''
 }, { immediate: true })
 
 function sheetValue(field: SheetField) {
@@ -149,6 +153,8 @@ function sheetValue(field: SheetField) {
     }
     case 'operator':
     case 'rating':
+    case 'lastNewsDate':
+    case 'lastNewsTitle':
       return sheet[field].trim() || null
     default:
       return sheet[field]
@@ -158,7 +164,8 @@ function sheetValue(field: SheetField) {
 async function saveSheetField(field: SheetField) {
   if (!project.value) return
   const value = sheetValue(field)
-  if (JSON.stringify(value) === JSON.stringify(project.value[field] ?? null)) return
+  const current = field === 'lastNewsDate' ? frDateToIso(project.value.lastNewsDate) : project.value[field] ?? null
+  if (JSON.stringify(value) === JSON.stringify(current)) return
   sheetSaving.value = field
   sheetError.value = { ...sheetError.value, [field]: undefined }
   try {
@@ -179,8 +186,19 @@ const subscriptionDates = computed(() =>
   project.value && detail.value ? subscriptionDatesByProject(detail.value.transactions)[project.value.name] ?? [] : []
 )
 
-const projectDelay = computed(() => (project.value ? delayMonths(project.value) : null))
+const remaining = computed(() => detail.value?.kpis.remainingCapital ?? 0)
 const projectEnd = computed(() => (project.value ? expectedEndDate(project.value) : null))
+const projectDelay = computed(() => (project.value ? delayMonths(project.value, new Date(), remaining.value) : null))
+// Capital déjà remboursé alors que Tokimo affiche encore le projet en cours.
+const repaidButStillOpen = computed(
+  () => !!project.value && project.value.status !== 'Remboursé' && project.value.status !== 'Annulé' && isFullyRepaid(project.value, remaining.value)
+)
+const lastCapitalRepaymentDate = computed(
+  () => detail.value?.transactions.find(t => t.status === 'Validé' && t.capital > 0)?.date ?? null
+)
+const repaidPct = computed(() =>
+  project.value?.amount ? Math.round((detail.value!.kpis.capitalRepaidTotal / project.value.amount) * 100) : 0
+)
 
 const today = new Date()
 
@@ -236,16 +254,32 @@ const schedule = computed(() => {
       </div>
 
       <UAlert
-        v-if="projectDelay"
-        icon="i-lucide-clock-alert"
-        color="error"
+        v-if="repaidButStillOpen"
+        icon="i-lucide-circle-check"
+        color="success"
         variant="subtle"
-        :title="`En retard de ${projectDelay} mois`"
-        :description="`Fin prévue le ${projectEnd!.toLocaleDateString('fr-FR')} (émission + ${project.durationMonths} mois), projet toujours en cours.`"
+        title="Capital intégralement remboursé"
+        :description="`${lastCapitalRepaymentDate ? `Dernier remboursement de capital le ${lastCapitalRepaymentDate}. ` : ''}Tokimo n'a pas encore passé le projet au statut « Remboursé ».`"
+      />
+      <UAlert
+        v-else-if="projectDelay"
+        icon="i-lucide-clock"
+        color="warning"
+        variant="subtle"
+        :title="`Durée cible dépassée de ${projectDelay} mois`"
+        :description="`Fin prévue le ${projectEnd!.toLocaleDateString('fr-FR')} (émission + ${project.durationMonths} mois). ${detail!.kpis.capitalRepaidTotal > 0 ? `Déjà remboursé : ${fmtEur(detail!.kpis.capitalRepaidTotal)} sur ${fmtEur(project.amount)} (${repaidPct} %), reste ${fmtEur(remaining)}.` : 'Aucun capital remboursé pour l’instant.'}`"
       />
       <p v-else-if="projectEnd && project.status !== 'Remboursé' && project.status !== 'Annulé'" class="text-xs text-muted -mt-4">
         Fin prévue le {{ projectEnd.toLocaleDateString('fr-FR') }}
       </p>
+
+      <div v-if="project.lastNewsTitle" class="flex items-start gap-2 text-sm rounded-lg border border-default px-4 py-3">
+        <UIcon name="i-lucide-newspaper" class="size-4 mt-0.5 text-muted shrink-0" />
+        <div>
+          <span class="text-xs text-muted">Dernière actualité Tokimo{{ project.lastNewsDate ? ` · ${project.lastNewsDate}` : '' }}</span>
+          <div class="font-medium">{{ project.lastNewsTitle }}</div>
+        </div>
+      </div>
 
       <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
         <KpiCard label="Capital investi" :value="fmtEur0(project.amount)" />
@@ -342,6 +376,23 @@ const schedule = computed(() => {
               :disabled="sheetSaving === 'guarantees'"
               class="w-full"
               @blur="saveSheetField('guarantees')"
+            />
+          </UFormField>
+          <UFormField label="Dernière actualité : date" :error="sheetError.lastNewsDate">
+            <UInput
+              v-model="sheet.lastNewsDate"
+              type="date"
+              :disabled="sheetSaving === 'lastNewsDate'"
+              class="w-full"
+              @blur="saveSheetField('lastNewsDate')"
+            />
+          </UFormField>
+          <UFormField label="Dernière actualité : titre" hint="titre seulement" :error="sheetError.lastNewsTitle" class="sm:col-span-2">
+            <UInput
+              v-model="sheet.lastNewsTitle"
+              :disabled="sheetSaving === 'lastNewsTitle'"
+              class="w-full"
+              @blur="saveSheetField('lastNewsTitle')"
             />
           </UFormField>
         </div>

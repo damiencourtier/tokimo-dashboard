@@ -15,7 +15,9 @@ const project = (name: string, amount: number, status: string, date_emission: st
   operator: null,
   guarantees: null,
   rating: null,
-  ltv: null
+  ltv: null,
+  lastNewsDate: null,
+  lastNewsTitle: null
 })
 
 const projects: Project[] = [

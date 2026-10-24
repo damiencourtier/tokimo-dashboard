@@ -31,7 +31,9 @@ const villa: Project = {
   operator: null,
   guarantees: null,
   rating: null,
-  ltv: null
+  ltv: null,
+  lastNewsDate: null,
+  lastNewsTitle: null
 }
 
 // Ligne réelle de l'export : "Part des intérêts" (1,10) un centime sous échéance − capital (1,11).

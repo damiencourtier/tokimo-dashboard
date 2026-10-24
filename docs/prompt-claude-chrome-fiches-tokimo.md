@@ -8,12 +8,15 @@ Récupère les infos des fiches projet Tokimo et reporte-les dans mon dashboard.
 - Sur le dashboard : ne modifie **que** les champs listés plus bas, et rien d'autre (pas le taux, pas les comptes, pas l'import).
 - **Montre-moi le tableau récapitulatif et attends mon « ok » avant d'écrire quoi que ce soit dans le dashboard.**
 - Une valeur introuvable reste vide : ne devine pas.
+- Actualités : ne recopie **que la date et le titre**, jamais le contenu (réservé aux investisseurs du projet).
 
 ## 1. Lister mes souscriptions sur Tokimo
 
 Ouvre https://app.tokimo.eu/mon-compte, section « Vos souscriptions ». Parcours **toute** la liste (pages suivantes, « voir plus », défilement), car elle affiche seulement 10 lignes à la fois. Pour chaque projet à traiter, note son nom exact et le lien `/investissements/<n°>`.
 
 Un même projet peut apparaître plusieurs fois (plusieurs souscriptions, par ex. VILLA MIREILLE - MANDELIEU) : traite-le une seule fois.
+
+Sur la page `/investissements/<n°>`, relève le bloc « Dernière actualité du projet » : sa **date** et son **titre** (la ligne en gras sous la date, par ex. « Fin du projet: Remboursement total de votre capital + intérêts ! »). S'il indique « Il n'y a aucune actualité pour l'instant », laisse vide.
 
 ## 2. Lire chaque fiche projet
 
@@ -31,7 +34,7 @@ Depuis la page `/investissements/<n°>`, suis le lien vers la fiche publique `/p
 
 ## 3. Me montrer le récapitulatif
 
-Un tableau, une ligne par projet : nom, n° de fiche, durée, versement, opérateur, garanties, note, LTV.
+Un tableau, une ligne par projet : nom, n° de fiche, durée, versement, opérateur, garanties, note, LTV, date et titre de la dernière actualité.
 
 En dessous, liste à part :
 - les projets Tokimo que tu n'as pas trouvés dans le dashboard (nom différent) ;
@@ -47,6 +50,7 @@ Ouvre {{DASHBOARD_URL}} (je suis connecté avec un compte admin). Pour chaque pr
 - **Garanties** : une garantie par ligne.
 - **Durée du prêt (mois)** : la durée cible.
 - **Type de versement** : « In fine (à l'échéance) » ou « Mensuel ».
+- **Dernière actualité : date** (sélecteur de date) et **Dernière actualité : titre**.
 
 Chaque champ s'enregistre quand tu cliques ailleurs (sortie du champ). Vérifie qu'aucun message d'erreur rouge n'apparaît sous le champ avant de passer au suivant.
 
