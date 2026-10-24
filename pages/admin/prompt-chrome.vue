@@ -31,7 +31,8 @@ const scopeItems = computed(() => [
 ])
 
 const targets = computed(() => projectsForScope(portfolio.data.value.projects, scope.value, selection.value))
-const prompt = computed(() => buildChromePrompt(template, targets.value, window.location.origin))
+const dashboardUrl = useRuntimeConfig().public.dashboardUrl as string
+const prompt = computed(() => buildChromePrompt(template, targets.value, dashboardUrl))
 
 const copied = ref(false)
 const copyError = ref(false)
@@ -101,7 +102,9 @@ async function copy() {
     </UCard>
 
     <p class="text-xs text-muted">
-      Le texte du prompt se modifie dans <code>docs/prompt-claude-chrome-fiches-tokimo.md</code>.
+      Le prompt fait remplir le dashboard sur <code>{{ dashboardUrl }}</code> (variable
+      <code>NUXT_PUBLIC_DASHBOARD_URL</code>). Son texte se modifie dans
+      <code>docs/prompt-claude-chrome-fiches-tokimo.md</code>.
     </p>
   </div>
 </template>

@@ -15,7 +15,11 @@ export default defineNuxtConfig({
   },
   runtimeConfig: {
     public: {
-      apiBase: process.env.NUXT_PUBLIC_API_BASE_URL || 'http://localhost:8000'
+      apiBase: process.env.NUXT_PUBLIC_API_BASE_URL || 'http://localhost:8000',
+      // Adresse du dashboard citée dans le prompt Claude in Chrome : toujours la
+      // prod par défaut (c'est là que les fiches sont remplies), même quand la
+      // page du prompt est ouverte en local.
+      dashboardUrl: process.env.NUXT_PUBLIC_DASHBOARD_URL || 'https://tokimo-dashboard.netlify.app'
     }
   },
   app: {
