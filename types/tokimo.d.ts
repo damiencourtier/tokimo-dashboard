@@ -115,6 +115,8 @@ export interface DashboardData {
   risk: RiskBreakdown
   /** Capital restant dû des projets non remboursés (souscriptions annulées exclues). */
   remainingCapitalByProject: Record<string, number>
+  /** Intérêts nets prévus mois par mois sur les 12 prochains mois, projet par projet. */
+  forecast: import('../utils/forecastSeries').ForecastSeries
 }
 
 /** Opportunité ouverte sur Tokimo, relevée par Claude in Chrome (données factuelles). */

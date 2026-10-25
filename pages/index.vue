@@ -247,6 +247,7 @@ const updatedAtLabel = computed(() => {
             <ClientOnly>
               <ForecastChart
                 :monthly-net-interest="data!.monthlyNetInterest"
+                :forecast="data!.forecast"
                 :monthly-forecast-net="data!.kpis.monthlyForecastNet"
               />
             </ClientOnly>

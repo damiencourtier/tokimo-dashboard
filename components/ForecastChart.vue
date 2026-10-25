@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import { Line } from 'vue-chartjs'
 import { computed, ref } from 'vue'
+import type { ForecastSeries } from '../utils/forecastSeries'
 
 const props = defineProps<{
   monthlyNetInterest: Record<string, number>
+  forecast: ForecastSeries
   monthlyForecastNet: number
 }>()
 
@@ -17,7 +19,7 @@ const periods = [
 const period = ref(12)
 
 const timeline = computed(() =>
-  buildNetInterestTimeline(props.monthlyNetInterest, props.monthlyForecastNet, period.value || null)
+  buildNetInterestTimeline(props.monthlyNetInterest, props.forecast.byMonth, period.value || null)
 )
 
 const chartData = computed(() => ({
@@ -53,6 +55,7 @@ const chartOptions = {
 
 // Moyenne sur les 6 derniers mois calendaires (mois sans versement comptés à 0).
 const avgLast6 = computed(() => averageLastMonths(props.monthlyNetInterest, 6))
+const overdueNet = computed(() => props.forecast.overdueInFine.reduce((a, o) => a + o.netInterest, 0))
 
 defineExpose({ avgLast6 })
 </script>
@@ -76,11 +79,18 @@ defineExpose({ avgLast6 })
     </div>
     <Line :key="$colorMode.value" :data="chartData" :options="chartOptions" />
     <p class="text-xs text-muted mt-3 leading-relaxed">
-      Estimation : environ <b>{{ monthlyForecastNet.toFixed(0) }} € net/mois</b> d'intérêts
-      (soit ~{{ (monthlyForecastNet * 12).toFixed(0) }} €/an net) sur le capital actuellement actif,
-      si tous les projets tiennent leur taux cible. Moyenne réelle nette des 6 derniers mois :
-      {{ avgLast6.toFixed(0) }} €/mois. L'écart vient des gros remboursements ponctuels (sorties de
-      projets) qui ne se répètent pas chaque mois.
+      Prévision projet par projet, au taux cible sur le capital restant dû : mensualités chaque mois,
+      intérêts des in fine en une fois le mois de leur fin prévue. Soit ~{{ (monthlyForecastNet * 12).toFixed(0) }} €
+      net sur 12 mois (<b>{{ monthlyForecastNet.toFixed(0) }} €/mois</b> en moyenne), contre
+      {{ avgLast6.toFixed(0) }} €/mois en moyenne réelle nette sur les 6 derniers mois.
+      <template v-if="forecast.nbEstimated">
+        {{ forecast.nbEstimated }} projet(s) sans mode de versement ou durée renseignés sont comptés à la moyenne
+        mensuelle.
+      </template>
+      <template v-if="forecast.overdueInFine.length">
+        Non inclus : {{ overdueNet.toFixed(0) }} € net attendus de {{ forecast.overdueInFine.length }} projet(s) in
+        fine dont la fin prévue est passée (date de versement inconnue).
+      </template>
     </p>
   </div>
 </template>

@@ -16,11 +16,12 @@ export interface NetInterestTimeline {
 /**
  * Axe mensuel continu : historique (mois sans versement à 0, fenêtre de
  * `historyMonths` mois jusqu'au mois courant, ou tout depuis le premier
- * versement si null), puis `forecastMonths` mois de prévision constante.
+ * versement si null), puis `forecastMonths` mois de prévision ("yyyy-mm" ->
+ * intérêts nets prévus, mois absents à 0).
  */
 export function buildNetInterestTimeline(
   monthlyNetInterest: Record<string, number>,
-  monthlyForecastNet: number,
+  forecastByMonth: Record<string, number>,
   historyMonths: number | null,
   today: Date = new Date(),
   forecastMonths = 12
@@ -40,7 +41,7 @@ export function buildNetInterestTimeline(
   return {
     labels: [...histLabels, ...foreLabels],
     history: [...history, ...Array(forecastMonths).fill(null)],
-    forecast: [...Array(histLabels.length - 1).fill(null), history[history.length - 1]!, ...Array(forecastMonths).fill(monthlyForecastNet)]
+    forecast: [...Array(histLabels.length - 1).fill(null), history[history.length - 1]!, ...foreLabels.map(m => forecastByMonth[m] ?? 0)]
   }
 }
 

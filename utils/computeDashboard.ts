@@ -1,6 +1,7 @@
 import type { Project, Transaction, DashboardData, ProjectDetail, RiskBreakdown, TaxYearSummary } from '../types/tokimo'
 import { delayMonths, expectedEndDate, hasFirstRankMortgage, isFullyRepaid } from './projectInsights'
 import { statusLabel } from './status'
+import { buildForecastSeries } from './forecastSeries'
 
 /**
  * Statut renvoyé par l'API pour une souscription disparue du dernier export
@@ -164,7 +165,8 @@ export function computeRisk(
 export function computeDashboard(
   projects: Project[],
   transactions: Transaction[],
-  updatedAt: string | null
+  updatedAt: string | null,
+  today: Date = new Date()
 ): DashboardData {
   const valid = transactions.filter(t => t.status === 'Validé')
   const echeances = valid.filter(t => t.nature === "Versement de l'échéance (montant brut)")
@@ -231,7 +233,11 @@ export function computeDashboard(
   }
 
   const monthlyForecastGross = round2((activeCapital * avgRateWeightedActive) / 100 / 12)
-  const monthlyForecastNet = round2(monthlyForecastGross * (1 - effectiveTaxRatePct / 100))
+  const remainingCapitalByProject = Object.fromEntries(activeProjects.map(p => [p.name, remainingCapitalOf(p)]))
+  const forecast = buildForecastSeries(activeProjects, remainingCapitalByProject, effectiveTaxRatePct, today)
+  // Moyenne des 12 mois prévus : les in fine y comptent au prorata, les in fine en retard non.
+  const forecastMonths = Object.values(forecast.byMonth)
+  const monthlyForecastNet = round2(sum(forecastMonths) / forecastMonths.length)
 
   return {
     updatedAt,
@@ -264,8 +270,9 @@ export function computeDashboard(
     monthlyDeposits: sortObj(monthlyDeposits),
     taxByYear: computeTaxByYear(transactions),
     subscriptionDates: subscriptionDatesByProject(transactions),
-    risk: computeRisk(activeProjects, remainingCapitalOf),
-    remainingCapitalByProject: Object.fromEntries(activeProjects.map(p => [p.name, remainingCapitalOf(p)]))
+    risk: computeRisk(activeProjects, remainingCapitalOf, today),
+    remainingCapitalByProject,
+    forecast
   }
 }
 
