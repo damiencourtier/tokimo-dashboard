@@ -8,6 +8,7 @@ export interface CashflowSeries {
   labels: string[]
   netInterest: number[]
   capitalRepaid: number[]
+  deposits: number[]
 }
 
 const round2 = (n: number) => Math.round(n * 100) / 100
@@ -22,7 +23,7 @@ function keyOf(date: string, granularity: CashflowGranularity): string {
 
 /**
  * Cash-flow des échéances validées (intérêts nets, calculés comme Tokimo, et
- * capital remboursé), regroupé par jour, mois ou année.
+ * capital remboursé) et des dépôts bancaires validés, regroupé par jour, mois ou année.
  * - mois / année : axe continu, les périodes sans versement à 0 ;
  * - jour : seulement les jours avec un versement (un axe continu jour par jour
  *   serait illisible sur plusieurs années), libellés "dd/mm/yyyy".
@@ -30,14 +31,19 @@ function keyOf(date: string, granularity: CashflowGranularity): string {
 export function buildCashflowSeries(transactions: Transaction[], granularity: CashflowGranularity): CashflowSeries {
   const net = new Map<string, number>()
   const capital = new Map<string, number>()
+  const deposits = new Map<string, number>()
   for (const t of transactions) {
-    if (t.status !== 'Validé' || t.nature !== "Versement de l'échéance (montant brut)") continue
+    if (t.status !== 'Validé') continue
     const key = keyOf(t.date, granularity)
-    net.set(key, round2((net.get(key) ?? 0) + grossInterestOf(t) - t.ir - t.csg))
-    capital.set(key, round2((capital.get(key) ?? 0) + t.capital))
+    if (t.nature === 'Crédit du compte') {
+      deposits.set(key, round2((deposits.get(key) ?? 0) + t.amount))
+    } else if (t.nature === "Versement de l'échéance (montant brut)") {
+      net.set(key, round2((net.get(key) ?? 0) + grossInterestOf(t) - t.ir - t.csg))
+      capital.set(key, round2((capital.get(key) ?? 0) + t.capital))
+    }
   }
 
-  const present = [...net.keys()].sort()
+  const present = [...new Set([...net.keys(), ...deposits.keys()])].sort()
   let keys = present
   if (present.length && granularity !== 'day') {
     keys = []
@@ -48,6 +54,7 @@ export function buildCashflowSeries(transactions: Transaction[], granularity: Ca
   return {
     labels: granularity === 'day' ? keys.map(k => k.split('-').reverse().join('/')) : keys,
     netInterest: keys.map(k => net.get(k) ?? 0),
-    capitalRepaid: keys.map(k => capital.get(k) ?? 0)
+    capitalRepaid: keys.map(k => capital.get(k) ?? 0),
+    deposits: keys.map(k => deposits.get(k) ?? 0)
   }
 }

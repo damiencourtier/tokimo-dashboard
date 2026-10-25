@@ -5,7 +5,7 @@ import type { Transaction } from '../types/tokimo'
 import type { CashflowGranularity } from '../utils/cashflowSeries'
 
 const props = defineProps<{
-  /** Transactions (toutes, ou celles d'un projet) : seules les échéances validées sont prises en compte. */
+  /** Transactions (toutes, ou celles d'un projet) : seules les échéances et dépôts validés sont pris en compte. */
   transactions: Transaction[]
 }>()
 
@@ -19,6 +19,8 @@ const granularity = ref<CashflowGranularity>('month')
 const series = computed(() => buildCashflowSeries(props.transactions, granularity.value))
 const sum = (arr: number[]) => Math.round(arr.reduce((a, b) => a + b, 0) * 100) / 100
 const fmtEur = (n: number) => n.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €'
+// Les transactions d'un projet n'ont pas de dépôt : la barre n'est alors pas affichée.
+const hasDeposits = computed(() => series.value.deposits.some(d => d !== 0))
 
 const chartData = computed(() => ({
   labels: series.value.labels,
@@ -34,7 +36,10 @@ const chartData = computed(() => ({
       data: series.value.capitalRepaid,
       backgroundColor: '#E5E1FA',
       stack: 's'
-    }
+    },
+    ...(hasDeposits.value
+      ? [{ label: 'Dépôts bancaires', data: series.value.deposits, backgroundColor: '#1DAA6B', stack: 'd' }]
+      : [])
   ]
 }))
 
@@ -53,7 +58,9 @@ const chartOptions = computed(() => ({
     legend: { position: 'top' as const, labels: { boxWidth: 10, font: { size: 11 } } },
     tooltip: {
       callbacks: {
-        footer: (items: { parsed: { y: number } }[]) => `Total : ${fmtEur(items.reduce((a, i) => a + i.parsed.y, 0))}`
+        // Total des versements reçus, hors dépôts (pile à part).
+        footer: (items: { parsed: { y: number }; dataset: { stack?: string } }[]) =>
+          `Total versé : ${fmtEur(items.filter(i => i.dataset.stack === 's').reduce((a, i) => a + i.parsed.y, 0))}`
       }
     }
   }
@@ -80,6 +87,7 @@ const chartOptions = computed(() => ({
     <Bar :key="`${$colorMode.value}-${granularity}`" :data="chartData" :options="chartOptions" />
     <p v-if="series.labels.length" class="text-xs text-muted mt-3">
       Total : {{ fmtEur(sum(series.netInterest)) }} d'intérêts nets + {{ fmtEur(sum(series.capitalRepaid)) }} de capital remboursé
+      <template v-if="hasDeposits"> · {{ fmtEur(sum(series.deposits)) }} déposés depuis ta banque</template>
       <template v-if="granularity === 'day'"> · seuls les jours avec un versement sont affichés</template>
     </p>
   </div>

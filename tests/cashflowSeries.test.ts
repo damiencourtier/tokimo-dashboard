@@ -26,12 +26,16 @@ const rows = [
   { ...echeance('20/10/2026'), nature: 'Bonus – P', amount: 0.22, echeance: 0 }
 ]
 
+const deposit = (date: string, amount: number, status = 'Validé'): Transaction =>
+  ({ ...echeance(date), nature: 'Crédit du compte', project: '', amount, status, echeance: 0, interest: 0, ir: 0, csg: 0, net: 0 })
+
 describe('cash-flow par période', () => {
   it('regroupe par jour, seulement les jours avec versement', () => {
     expect(buildCashflowSeries(rows, 'day')).toEqual({
       labels: ['15/12/2024', '04/08/2026', '01/10/2026'],
       netInterest: [0.77, 34.01, 0.77],
-      capitalRepaid: [0, 327.86, 0]
+      capitalRepaid: [0, 327.86, 0],
+      deposits: [0, 0, 0]
     })
   })
 
@@ -48,11 +52,23 @@ describe('cash-flow par période', () => {
     expect(buildCashflowSeries(rows, 'year')).toEqual({
       labels: ['2024', '2025', '2026'],
       netInterest: [0.77, 0, 34.78],
-      capitalRepaid: [0, 0, 327.86]
+      capitalRepaid: [0, 0, 327.86],
+      deposits: [0, 0, 0]
     })
   })
 
   it('renvoie des séries vides sans échéance', () => {
-    expect(buildCashflowSeries([], 'month')).toEqual({ labels: [], netInterest: [], capitalRepaid: [] })
+    expect(buildCashflowSeries([], 'month')).toEqual({ labels: [], netInterest: [], capitalRepaid: [], deposits: [] })
+  })
+
+  it('ajoute les dépôts bancaires validés et étend l\'axe à leurs dates', () => {
+    const s = buildCashflowSeries([...rows, deposit('10/06/2024', 1000), deposit('12/08/2026', 250.5), deposit('13/08/2026', 99, 'En attente')], 'month')
+    expect(s.labels[0]).toBe('2024-06')
+    expect(s.deposits[0]).toBe(1000)
+    expect(s.netInterest[0]).toBe(0)
+    expect(s.deposits[s.labels.indexOf('2026-08')]).toBe(250.5)
+    expect(buildCashflowSeries([deposit('10/06/2024', 1000)], 'day')).toEqual({
+      labels: ['10/06/2024'], netInterest: [0], capitalRepaid: [0], deposits: [1000]
+    })
   })
 })
